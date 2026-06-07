@@ -4,7 +4,7 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
-  base: '/financial-tracking/',
+  base: '/fin_app/',
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
