@@ -22,12 +22,15 @@ function useUserInteraction() {
   )
 }
 
+function interpolate(message: string, params: Record<string, string>): string {
+  return message.replace(/\{(\w+)\}/g, (_, key) => params[key] ?? `{${key}}`)
+}
+
 export function CloudLoginDialog() {
   const interaction = useUserInteraction()
   const [values, setValues] = useState<Record<string, string>>({})
   const [submitting, setSubmitting] = useState(false)
 
-  // Reset fields whenever a new interaction appears
   useEffect(() => {
     if (interaction) {
       const defaults: Record<string, string> = {}
@@ -44,6 +47,8 @@ export function CloudLoginDialog() {
     setSubmitting(true)
     try {
       await interaction.onSubmit(values as Parameters<typeof interaction.onSubmit>[0])
+      // Kick off sync after login completes
+      if (cloudEnabled) db.cloud.sync().catch(() => {})
     } finally {
       setSubmitting(false)
     }
@@ -61,7 +66,6 @@ export function CloudLoginDialog() {
       open
       maxWidth="xs"
       fullWidth
-      // Prevent closing by clicking backdrop — especially important for OTP
       onClose={(_e, reason) => { if (reason !== 'backdropClick') handleCancel() }}
       disableRestoreFocus
     >
@@ -69,36 +73,38 @@ export function CloudLoginDialog() {
 
       <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '12px !important' }}>
         {interaction.alerts.map((alert, i) => (
-          <Alert key={i} severity={alertSeverityMap[alert.type]}>{alert.message}</Alert>
+          <Alert key={i} severity={alertSeverityMap[alert.type]}>
+            {interpolate(alert.message, alert.messageParams)}
+          </Alert>
         ))}
 
-        {isOtp && (
+        {isOtp && interaction.alerts.length === 0 && (
           <Typography variant="body2" color="text.secondary">
-            Verifique seu email e cole o código de verificação abaixo.
+            Verifique seu email e cole o código abaixo.
           </Typography>
         )}
 
         {Object.entries(interaction.fields).map(([name, field]) => {
           const f = field as DXCInputField
           return (
-          <TextField
-            key={name}
-            label={f.label ?? name}
-            placeholder={f.placeholder}
-            type={f.type === 'otp' ? 'text' : f.type}
-            size="small"
-            fullWidth
-            autoFocus
-            value={values[name] ?? ''}
-            onChange={e => setValues(v => ({ ...v, [name]: e.target.value }))}
-            onKeyDown={e => { if (e.key === 'Enter') handleSubmit() }}
-            slotProps={{
-              htmlInput: {
-                autoComplete: name === 'otp' ? 'one-time-code' : undefined,
-                inputMode: name === 'otp' ? 'numeric' : undefined,
-              },
-            }}
-          />
+            <TextField
+              key={name}
+              label={f.label ?? name}
+              placeholder={f.placeholder}
+              type={f.type === 'otp' ? 'text' : f.type}
+              size="small"
+              fullWidth
+              autoFocus
+              value={values[name] ?? ''}
+              onChange={e => setValues(v => ({ ...v, [name]: e.target.value }))}
+              onKeyDown={e => { if (e.key === 'Enter') handleSubmit() }}
+              slotProps={{
+                htmlInput: {
+                  autoComplete: name === 'otp' ? 'one-time-code' : undefined,
+                  inputMode: name === 'otp' ? 'numeric' : undefined,
+                },
+              }}
+            />
           )
         })}
       </DialogContent>

@@ -45,11 +45,15 @@ function useCloudUser() {
 
 function SyncStatusChip() {
   const state = useSyncState()
-  if (!state) return null
+  const user = useCloudUser()
+  if (!state || !user?.isLoggedIn) return null
   const { phase, status } = state
-  if (status === 'not-started' || status === 'disconnected') return <Chip icon={<CloudOff size={14} />} label="Offline" size="small" />
-  if (phase === 'pushing' || phase === 'pulling' || status === 'connecting') return <Chip icon={<CircularProgress size={12} />} label="Sincronizando..." size="small" color="info" />
   if (phase === 'error' || status === 'error') return <Chip icon={<CloudOff size={14} />} label="Erro de sync" size="small" color="error" />
+  if (phase === 'offline' || status === 'offline') return <Chip icon={<CloudOff size={14} />} label="Offline" size="small" />
+  if (status === 'disconnected') return <Chip icon={<CloudOff size={14} />} label="Offline" size="small" />
+  if (phase === 'pushing' || phase === 'pulling' || status === 'connecting' || status === 'not-started' || phase === 'initial' || phase === 'not-in-sync') {
+    return <Chip icon={<CircularProgress size={12} />} label="Sincronizando..." size="small" color="info" />
+  }
   return <Chip icon={<Cloud size={14} />} label="Sincronizado" size="small" color="success" variant="outlined" />
 }
 

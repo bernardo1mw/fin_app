@@ -24,6 +24,7 @@ class FinanceDB extends Dexie {
       this.cloud.configure({
         databaseUrl: CLOUD_URL,
         requireAuth: false,
+        customLoginGui: true,
       })
     }
   }
