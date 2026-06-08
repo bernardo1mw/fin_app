@@ -2,6 +2,7 @@ import { HashRouter, Routes, Route } from 'react-router-dom'
 import { ThemeProvider, createTheme } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
 import { AppShell } from '@/components/layout/AppShell'
+import { CloudLoginDialog } from '@/features/auth/CloudLoginDialog'
 import { DashboardPage } from '@/features/dashboard/DashboardPage'
 import { TransactionList } from '@/features/transactions/TransactionList'
 import { ImportPage } from '@/features/import/ImportPage'
@@ -25,6 +26,7 @@ export default function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
+      <CloudLoginDialog />
       <HashRouter>
         <Routes>
           <Route element={<AppShell />}>
