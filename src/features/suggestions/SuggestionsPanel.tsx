@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react'
 import { AlertTriangle, RefreshCw, Lightbulb, CheckCircle, Info, Sparkles } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
+import Box from '@mui/material/Box'
+import Card from '@mui/material/Card'
+import CardContent from '@mui/material/CardContent'
+import Typography from '@mui/material/Typography'
+import Button from '@mui/material/Button'
+import Chip from '@mui/material/Chip'
+import Alert from '@mui/material/Alert'
 import { generateSuggestions, type Suggestion } from './SuggestionsEngine'
 import { getAISuggestions, type AISuggestion } from './ClaudeAdvisor'
 
@@ -24,8 +28,7 @@ export function SuggestionsPanel() {
     setLoadingAI(true)
     setAiError(null)
     try {
-      const results = await getAISuggestions(apiKey)
-      setAiSuggestions(results)
+      setAiSuggestions(await getAISuggestions(apiKey))
     } catch (e) {
       setAiError(e instanceof Error ? e.message : 'Erro desconhecido')
     } finally {
@@ -34,88 +37,81 @@ export function SuggestionsPanel() {
   }
 
   return (
-    <div className="space-y-6 max-w-2xl">
-      <h2 className="text-2xl font-semibold">Sugestões</h2>
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, maxWidth: 680 }}>
+      <Typography variant="h5" sx={{ fontWeight: 700 }}>Sugestões</Typography>
 
-      <div className="space-y-3">
-        <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Análise automática</h3>
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+        <Typography variant="overline" color="text.secondary">Análise automática</Typography>
         {loadingRules ? (
-          <p className="text-sm text-muted-foreground animate-pulse">Analisando transações...</p>
+          <Typography variant="body2" color="text.secondary">Analisando transações...</Typography>
         ) : suggestions.length === 0 ? (
           <Card>
-            <CardContent className="pt-4 flex items-center gap-3">
-              <CheckCircle className="size-4 text-green-500 shrink-0" />
-              <p className="text-sm">Nenhuma observação neste momento. Continue assim!</p>
+            <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 2, '&:last-child': { pb: 2 } }}>
+              <CheckCircle size={16} color="#22c55e" />
+              <Typography variant="body2">Nenhuma observação neste momento. Continue assim!</Typography>
             </CardContent>
           </Card>
         ) : (
           suggestions.map(s => <SuggestionCard key={s.id} suggestion={s} />)
         )}
-      </div>
+      </Box>
 
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Sugestões com IA</h3>
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Typography variant="overline" color="text.secondary">Sugestões com IA</Typography>
           {apiKey ? (
-            <Button size="sm" variant="outline" onClick={handleGetAISuggestions} disabled={loadingAI}>
-              {loadingAI
-                ? <><RefreshCw className="size-3 mr-1 animate-spin" /> Consultando...</>
-                : <><Sparkles className="size-3 mr-1" /> Obter sugestões IA</>
-              }
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={handleGetAISuggestions}
+              disabled={loadingAI}
+              startIcon={loadingAI ? <RefreshCw size={12} /> : <Sparkles size={12} />}
+            >
+              {loadingAI ? 'Consultando...' : 'Obter sugestões IA'}
             </Button>
           ) : (
-            <Badge variant="secondary" className="text-xs">
-              Configure a chave API em Configurações
-            </Badge>
+            <Chip label="Configure a chave API em Configurações" size="small" variant="outlined" />
           )}
-        </div>
+        </Box>
 
-        {aiError && (
-          <Card className="border-destructive">
-            <CardContent className="pt-4 text-sm text-destructive">{aiError}</CardContent>
-          </Card>
-        )}
+        {aiError && <Alert severity="error">{aiError}</Alert>}
 
         {aiSuggestions.map((s, i) => (
           <Card key={i}>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Lightbulb className="size-4 text-yellow-500" />
-                {s.insight}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="text-sm space-y-1 text-muted-foreground">
-              <p><strong>Recomendação:</strong> {s.recommendation}</p>
-              <p><strong>Dica de poupança:</strong> {s.savingsTip}</p>
+            <CardContent sx={{ pb: '16px !important' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                <Lightbulb size={16} color="#eab308" />
+                <Typography variant="subtitle2">{s.insight}</Typography>
+              </Box>
+              <Typography variant="body2" color="text.secondary">
+                <strong>Recomendação:</strong> {s.recommendation}
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                <strong>Dica de poupança:</strong> {s.savingsTip}
+              </Typography>
             </CardContent>
           </Card>
         ))}
-      </div>
-    </div>
+      </Box>
+    </Box>
   )
 }
 
 function SuggestionCard({ suggestion }: { suggestion: Suggestion }) {
-  const icons = {
-    warning: AlertTriangle,
-    info: Info,
-    success: CheckCircle,
-  }
-  const colors = {
-    warning: 'text-yellow-500',
-    info: 'text-blue-500',
-    success: 'text-green-500',
-  }
-  const Icon = icons[suggestion.severity]
+  const cfg = {
+    warning: { Icon: AlertTriangle, color: '#ed6c02' },
+    info: { Icon: Info, color: '#0288d1' },
+    success: { Icon: CheckCircle, color: '#2e7d32' },
+  }[suggestion.severity]
 
   return (
     <Card>
-      <CardContent className="pt-4 flex gap-3">
-        <Icon className={`size-4 shrink-0 mt-0.5 ${colors[suggestion.severity]}`} />
-        <div>
-          <p className="text-sm font-medium">{suggestion.title}</p>
-          <p className="text-sm text-muted-foreground mt-0.5">{suggestion.description}</p>
-        </div>
+      <CardContent sx={{ display: 'flex', gap: 1.5, py: 2, '&:last-child': { pb: 2 } }}>
+        <cfg.Icon size={16} color={cfg.color} style={{ marginTop: 2, flexShrink: 0 }} />
+        <Box>
+          <Typography variant="body2" sx={{ fontWeight: 600 }}>{suggestion.title}</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>{suggestion.description}</Typography>
+        </Box>
       </CardContent>
     </Card>
   )

@@ -1,13 +1,57 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useSyncExternalStore } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Download, Eye, EyeOff, Save } from 'lucide-react'
-import { db } from '@/db/db'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Download, Eye, EyeOff, Save, Cloud, CloudOff, LogIn, LogOut, UserPlus } from 'lucide-react'
+import type { SelectChangeEvent } from '@mui/material/Select'
+import { db, cloudEnabled } from '@/db/db'
+import Box from '@mui/material/Box'
+import Typography from '@mui/material/Typography'
+import Button from '@mui/material/Button'
+import Card from '@mui/material/Card'
+import CardContent from '@mui/material/CardContent'
+import TextField from '@mui/material/TextField'
+import FormControl from '@mui/material/FormControl'
+import InputLabel from '@mui/material/InputLabel'
+import Select from '@mui/material/Select'
+import MenuItem from '@mui/material/MenuItem'
+import InputAdornment from '@mui/material/InputAdornment'
+import IconButton from '@mui/material/IconButton'
+import Alert from '@mui/material/Alert'
+import Divider from '@mui/material/Divider'
+import Chip from '@mui/material/Chip'
+import CircularProgress from '@mui/material/CircularProgress'
 import type { UserProfile } from '@/db/schema'
+
+function useSyncState() {
+  return useSyncExternalStore(
+    (cb) => {
+      if (!cloudEnabled) return () => {}
+      const sub = db.cloud.syncState.subscribe(cb)
+      return () => sub.unsubscribe()
+    },
+    () => cloudEnabled ? db.cloud.syncState.value : null,
+  )
+}
+
+function useCloudUser() {
+  return useSyncExternalStore(
+    (cb) => {
+      if (!cloudEnabled) return () => {}
+      const sub = db.cloud.currentUser.subscribe(cb)
+      return () => sub.unsubscribe()
+    },
+    () => cloudEnabled ? db.cloud.currentUser.value : null,
+  )
+}
+
+function SyncStatusChip() {
+  const state = useSyncState()
+  if (!state) return null
+  const { phase, status } = state
+  if (status === 'not-started' || status === 'disconnected') return <Chip icon={<CloudOff size={14} />} label="Offline" size="small" />
+  if (phase === 'pushing' || phase === 'pulling' || status === 'connecting') return <Chip icon={<CircularProgress size={12} />} label="Sincronizando..." size="small" color="info" />
+  if (phase === 'error' || status === 'error') return <Chip icon={<CloudOff size={14} />} label="Erro de sync" size="small" color="error" />
+  return <Chip icon={<Cloud size={14} />} label="Sincronizado" size="small" color="success" variant="outlined" />
+}
 
 export function SettingsPage() {
   const profile = useLiveQuery(() => db.userProfile.get(1))
@@ -16,7 +60,13 @@ export function SettingsPage() {
   const [income, setIncome] = useState('')
   const [savingsPct, setSavingsPct] = useState('')
   const [riskProfile, setRiskProfile] = useState<UserProfile['riskProfile']>('moderado')
-  const [saved, setSaved] = useState(false)
+  const [savedMsg, setSavedMsg] = useState('')
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviting, setInviting] = useState(false)
+  const [inviteMsg, setInviteMsg] = useState('')
+
+  const cloudUser = useCloudUser()
+  const isLoggedIn = cloudUser?.isLoggedIn ?? false
 
   useEffect(() => {
     if (profile) {
@@ -26,14 +76,15 @@ export function SettingsPage() {
     }
   }, [profile])
 
+  function flash(msg: string) {
+    setSavedMsg(msg)
+    setTimeout(() => setSavedMsg(''), 2500)
+  }
+
   function saveApiKey() {
-    if (apiKey.trim()) {
-      localStorage.setItem('anthropic_api_key', apiKey.trim())
-    } else {
-      localStorage.removeItem('anthropic_api_key')
-    }
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
+    if (apiKey.trim()) localStorage.setItem('anthropic_api_key', apiKey.trim())
+    else localStorage.removeItem('anthropic_api_key')
+    flash('Chave salva!')
   }
 
   async function saveProfile() {
@@ -43,112 +94,212 @@ export function SettingsPage() {
       savingsGoalPct: parseFloat(savingsPct) || 20,
       riskProfile,
     })
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
+    flash('Perfil salvo!')
   }
 
   async function exportData() {
     const [transactions, categories, categoryRules, accounts, userProfile] = await Promise.all([
-      db.transactions.toArray(),
-      db.categories.toArray(),
-      db.categoryRules.toArray(),
-      db.accounts.toArray(),
-      db.userProfile.toArray(),
+      db.transactions.toArray(), db.categories.toArray(),
+      db.categoryRules.toArray(), db.accounts.toArray(), db.userProfile.toArray(),
     ])
-
-    const data = { exportedAt: new Date().toISOString(), transactions, categories, categoryRules, accounts, userProfile }
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), transactions, categories, categoryRules, accounts, userProfile }, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
     a.download = `financas-backup-${new Date().toISOString().slice(0, 10)}.json`
     a.click()
     URL.revokeObjectURL(url)
-    localStorage.setItem('last_export', new Date().toISOString())
+  }
+
+  async function handleLogin() {
+    await db.cloud.login()
+  }
+
+  async function handleLogout() {
+    await db.cloud.logout()
+  }
+
+  async function handleInvite() {
+    if (!inviteEmail.trim() || !cloudUser?.userId) return
+    setInviting(true)
+    setInviteMsg('')
+    try {
+      await db.table('members').add({
+        realmId: cloudUser.userId,
+        email: inviteEmail.trim(),
+        name: inviteEmail.trim(),
+        invite: true,
+      })
+      setInviteMsg(`Convite enviado para ${inviteEmail.trim()}!`)
+      setInviteEmail('')
+    } catch (e: unknown) {
+      setInviteMsg(`Erro: ${e instanceof Error ? e.message : 'tente novamente'}`)
+    } finally {
+      setInviting(false)
+    }
   }
 
   return (
-    <div className="space-y-6 max-w-xl">
-      <h2 className="text-2xl font-semibold">Configurações</h2>
+    <Box sx={{ maxWidth: 520, display: 'flex', flexDirection: 'column', gap: 3 }}>
+      <Typography variant="h5" sx={{ fontWeight: 700 }}>Configurações</Typography>
 
+      {savedMsg && <Alert severity="success" sx={{ py: 0.5 }}>{savedMsg}</Alert>}
+
+      {/* Cloud Sync */}
+      {cloudEnabled ? (
+        <Card>
+          <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>Sincronização na nuvem</Typography>
+              <SyncStatusChip />
+            </Box>
+
+            {!isLoggedIn ? (
+              <>
+                <Typography variant="body2" color="text.secondary">
+                  Faça login para sincronizar os dados entre dispositivos e compartilhar com outra pessoa. Usa email + código de verificação — sem senha.
+                </Typography>
+                <Button variant="contained" startIcon={<LogIn size={14} />} onClick={handleLogin} sx={{ alignSelf: 'flex-start' }}>
+                  Entrar com email
+                </Button>
+              </>
+            ) : (
+              <>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography variant="body2" color="text.secondary">Logado como</Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 500 }}>{cloudUser?.email}</Typography>
+                  <Button size="small" color="inherit" startIcon={<LogOut size={13} />} onClick={handleLogout} sx={{ ml: 'auto', fontSize: 12 }}>
+                    Sair
+                  </Button>
+                </Box>
+
+                <Divider />
+
+                <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>Convidar outra pessoa</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  A pessoa receberá acesso de leitura e escrita a todos os seus dados financeiros.
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                  <TextField
+                    size="small"
+                    fullWidth
+                    label="Email"
+                    type="email"
+                    value={inviteEmail}
+                    onChange={e => setInviteEmail(e.target.value)}
+                    placeholder="email@exemplo.com"
+                    onKeyDown={e => { if (e.key === 'Enter') handleInvite() }}
+                  />
+                  <Button
+                    variant="outlined"
+                    startIcon={inviting ? <CircularProgress size={14} /> : <UserPlus size={14} />}
+                    onClick={handleInvite}
+                    disabled={inviting || !inviteEmail.trim()}
+                    sx={{ whiteSpace: 'nowrap' }}
+                  >
+                    Convidar
+                  </Button>
+                </Box>
+                {inviteMsg && (
+                  <Alert severity={inviteMsg.startsWith('Erro') ? 'error' : 'success'} sx={{ py: 0.5 }}>
+                    {inviteMsg}
+                  </Alert>
+                )}
+              </>
+            )}
+          </CardContent>
+        </Card>
+      ) : (
+        <Alert severity="info" icon={<CloudOff size={16} />}>
+          Sincronização desativada. Configure <code>VITE_DEXIE_CLOUD_URL</code> no <code>.env.local</code> para ativar.
+        </Alert>
+      )}
+
+      {/* API Key */}
       <Card>
-        <CardHeader><CardTitle className="text-base">Chave API Anthropic (opcional)</CardTitle></CardHeader>
-        <CardContent className="space-y-3">
-          <p className="text-sm text-muted-foreground">
+        <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>Chave API Anthropic</Typography>
+          <Typography variant="body2" color="text.secondary">
             Necessária para sugestões com IA. Armazenada apenas no seu navegador e enviada diretamente à API da Anthropic — sem servidores intermediários.
-          </p>
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <Input
-                type={showKey ? 'text' : 'password'}
-                value={apiKey}
-                onChange={e => setApiKey(e.target.value)}
-                placeholder="sk-ant-..."
-                className="pr-10"
-              />
-              <button
-                type="button"
-                onClick={() => setShowKey(v => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-              >
-                {showKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-              </button>
-            </div>
-            <Button onClick={saveApiKey}><Save className="size-4 mr-1" /> Salvar</Button>
-          </div>
-          {saved && <p className="text-xs text-green-600">Salvo!</p>}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader><CardTitle className="text-base">Perfil financeiro</CardTitle></CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-1">
-            <Label>Renda mensal (R$)</Label>
-            <Input
-              type="number"
-              value={income}
-              onChange={e => setIncome(e.target.value)}
-              placeholder="Ex: 5000"
-            />
-          </div>
-          <div className="space-y-1">
-            <Label>Meta de poupança (%)</Label>
-            <Input
-              type="number"
-              value={savingsPct}
-              onChange={e => setSavingsPct(e.target.value)}
-              placeholder="Ex: 20"
-              min="0"
-              max="100"
-            />
-          </div>
-          <div className="space-y-1">
-            <Label>Perfil de investidor</Label>
-            <Select value={riskProfile} onValueChange={v => setRiskProfile(v as UserProfile['riskProfile'])}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="conservador">Conservador</SelectItem>
-                <SelectItem value="moderado">Moderado</SelectItem>
-                <SelectItem value="arrojado">Arrojado</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <Button onClick={saveProfile}><Save className="size-4 mr-1" /> Salvar perfil</Button>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader><CardTitle className="text-base">Backup de dados</CardTitle></CardHeader>
-        <CardContent className="space-y-3">
-          <p className="text-sm text-muted-foreground">
-            Os dados são armazenados localmente no seu navegador. Exporte regularmente para evitar perda de dados.
-          </p>
-          <Button variant="outline" onClick={exportData}>
-            <Download className="size-4 mr-2" /> Exportar dados (JSON)
+          </Typography>
+          <TextField
+            size="small"
+            fullWidth
+            type={showKey ? 'text' : 'password'}
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            placeholder="sk-ant-..."
+            slotProps={{
+              input: {
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <IconButton size="small" onClick={() => setShowKey(v => !v)} edge="end">
+                      {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              },
+            }}
+          />
+          <Button variant="contained" startIcon={<Save size={14} />} onClick={saveApiKey} sx={{ alignSelf: 'flex-start' }}>
+            Salvar chave
           </Button>
         </CardContent>
       </Card>
-    </div>
+
+      {/* Financial profile */}
+      <Card>
+        <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>Perfil financeiro</Typography>
+          <TextField
+            size="small"
+            fullWidth
+            label="Renda mensal (R$)"
+            type="number"
+            value={income}
+            onChange={(e) => setIncome(e.target.value)}
+            placeholder="Ex: 5000"
+          />
+          <TextField
+            size="small"
+            fullWidth
+            label="Meta de poupança (%)"
+            type="number"
+            value={savingsPct}
+            onChange={(e) => setSavingsPct(e.target.value)}
+            slotProps={{ htmlInput: { min: 0, max: 100 } }}
+          />
+          <FormControl size="small" fullWidth>
+            <InputLabel>Perfil de investidor</InputLabel>
+            <Select
+              label="Perfil de investidor"
+              value={riskProfile}
+              onChange={(e: SelectChangeEvent) => setRiskProfile(e.target.value as UserProfile['riskProfile'])}
+            >
+              <MenuItem value="conservador">Conservador</MenuItem>
+              <MenuItem value="moderado">Moderado</MenuItem>
+              <MenuItem value="arrojado">Arrojado</MenuItem>
+            </Select>
+          </FormControl>
+          <Button variant="contained" startIcon={<Save size={14} />} onClick={saveProfile} sx={{ alignSelf: 'flex-start' }}>
+            Salvar perfil
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Backup */}
+      <Card>
+        <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>Backup de dados</Typography>
+          <Typography variant="body2" color="text.secondary">
+            Os dados são armazenados localmente no seu navegador. Exporte regularmente para evitar perda de dados.
+          </Typography>
+          <Divider />
+          <Button variant="outlined" startIcon={<Download size={14} />} onClick={exportData} sx={{ alignSelf: 'flex-start' }}>
+            Exportar dados (JSON)
+          </Button>
+        </CardContent>
+      </Card>
+    </Box>
   )
 }

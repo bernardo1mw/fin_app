@@ -3,23 +3,41 @@ import { db } from '@/db/db'
 import { upsertRuleForTransaction } from '@/features/categories/useCategorization'
 import type { Transaction } from '@/db/schema'
 
-export function useTransactions(filter?: { categoryId?: number; accountId?: number }) {
+export interface TransactionFilter {
+  categoryId?: number
+  accountId?: number
+  dateFrom?: Date
+  dateTo?: Date
+  payeeSearch?: string
+  amountMin?: number
+  amountMax?: number
+}
+
+export function useTransactions(filter?: TransactionFilter) {
   const transactions = useLiveQuery(async () => {
     const all = await db.transactions.orderBy('date').reverse().toArray()
     if (!filter) return all
-    return all.filter(t =>
-      (filter.categoryId === undefined || t.categoryId === filter.categoryId) &&
-      (filter.accountId === undefined || t.accountId === filter.accountId)
-    )
-  }, [filter?.categoryId, filter?.accountId])
+    return all.filter(t => {
+      if (filter.categoryId !== undefined && t.categoryId !== filter.categoryId) return false
+      if (filter.accountId !== undefined && t.accountId !== filter.accountId) return false
+      if (filter.dateFrom && t.date < filter.dateFrom) return false
+      if (filter.dateTo && t.date > filter.dateTo) return false
+      if (filter.payeeSearch && !t.payee.toLowerCase().includes(filter.payeeSearch.toLowerCase())) return false
+      if (filter.amountMin !== undefined && Math.abs(t.amount) < filter.amountMin) return false
+      if (filter.amountMax !== undefined && Math.abs(t.amount) > filter.amountMax) return false
+      return true
+    })
+  }, [
+    filter?.categoryId, filter?.accountId,
+    filter?.dateFrom?.getTime(), filter?.dateTo?.getTime(),
+    filter?.payeeSearch, filter?.amountMin, filter?.amountMax,
+  ])
 
   const categories = useLiveQuery(() => db.categories.toArray())
   const accounts = useLiveQuery(() => db.accounts.toArray())
 
   async function countSamePayee(tx: Transaction): Promise<number> {
-    return db.transactions
-      .filter(t => t.payee === tx.payee && t.id !== tx.id)
-      .count()
+    return db.transactions.filter(t => t.payee === tx.payee && t.id !== tx.id).count()
   }
 
   async function setCategory(tx: Transaction, categoryId: number) {
@@ -28,12 +46,14 @@ export function useTransactions(filter?: { categoryId?: number; accountId?: numb
   }
 
   async function setCategoryAllByPayee(tx: Transaction, categoryId: number) {
-    const ids = await db.transactions
-      .filter(t => t.payee === tx.payee)
-      .primaryKeys()
+    const ids = await db.transactions.filter(t => t.payee === tx.payee).primaryKeys()
     await db.transactions.where(':id').anyOf(ids as number[]).modify({ categoryId })
     await upsertRuleForTransaction({ cnpjPrefix: tx.cnpjPrefix, payee: tx.payee }, categoryId)
   }
 
-  return { transactions, categories, accounts, setCategory, setCategoryAllByPayee, countSamePayee }
+  async function setCategoryBulk(ids: number[], categoryId: number) {
+    await db.transactions.where(':id').anyOf(ids).modify({ categoryId })
+  }
+
+  return { transactions, categories, accounts, setCategory, setCategoryAllByPayee, setCategoryBulk, countSamePayee }
 }

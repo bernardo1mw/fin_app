@@ -1,4 +1,7 @@
-import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select'
+import FormControl from '@mui/material/FormControl'
+import Select from '@mui/material/Select'
+import MenuItem from '@mui/material/MenuItem'
+import type { SelectChangeEvent } from '@mui/material/Select'
 import type { Category } from '@/db/schema'
 
 interface Props {
@@ -8,25 +11,21 @@ interface Props {
 }
 
 export function CategoryPicker({ value, categories, onChange }: Props) {
-  const selectedName = value !== null && value !== undefined
-    ? (categories.find(c => c.id === value)?.name ?? 'Sem categoria')
-    : 'Sem categoria'
-
   return (
-    <Select
-      value={value !== null && value !== undefined ? String(value) : ''}
-      onValueChange={v => { if (v !== null) onChange(parseInt(v)) }}
-    >
-      <SelectTrigger className="h-7 text-xs w-40">
-        <span className="flex-1 text-left truncate">{selectedName}</span>
-      </SelectTrigger>
-      <SelectContent>
+    <FormControl size="small" sx={{ minWidth: 140 }}>
+      <Select
+        value={value !== null && value !== undefined ? String(value) : ''}
+        onChange={(e: SelectChangeEvent<string>) => {
+          if (e.target.value !== '') onChange(Number(e.target.value))
+        }}
+        displayEmpty
+        sx={{ fontSize: 13 }}
+      >
+        <MenuItem value=""><em style={{ fontSize: 13 }}>Sem categoria</em></MenuItem>
         {categories.map(cat => (
-          <SelectItem key={cat.id} value={cat.id!.toString()}>
-            {cat.name}
-          </SelectItem>
+          <MenuItem key={cat.id} value={String(cat.id)} sx={{ fontSize: 13 }}>{cat.name}</MenuItem>
         ))}
-      </SelectContent>
-    </Select>
+      </Select>
+    </FormControl>
   )
 }

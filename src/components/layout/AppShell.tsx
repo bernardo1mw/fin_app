@@ -1,13 +1,17 @@
+import { useState } from 'react'
 import { Outlet } from 'react-router-dom'
+import Box from '@mui/material/Box'
 import { Sidebar } from './Sidebar'
 
 export function AppShell() {
+  const [open, setOpen] = useState(false)
+
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
-      <Sidebar />
-      <main className="flex-1 overflow-y-auto p-6">
+    <Box sx={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
+      <Sidebar open={open} onToggle={() => setOpen(o => !o)} />
+      <Box component="main" sx={{ flexGrow: 1, overflow: 'auto', p: { xs: 2, sm: 3 } }}>
         <Outlet />
-      </main>
-    </div>
+      </Box>
+    </Box>
   )
 }

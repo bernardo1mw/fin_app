@@ -1,13 +1,39 @@
 import { useState } from 'react'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import type { SelectChangeEvent } from '@mui/material/Select'
+import Box from '@mui/material/Box'
+import Typography from '@mui/material/Typography'
+import Button from '@mui/material/Button'
+import IconButton from '@mui/material/IconButton'
+import Paper from '@mui/material/Paper'
+import Table from '@mui/material/Table'
+import TableBody from '@mui/material/TableBody'
+import TableCell from '@mui/material/TableCell'
+import TableContainer from '@mui/material/TableContainer'
+import TableHead from '@mui/material/TableHead'
+import TableRow from '@mui/material/TableRow'
+import Checkbox from '@mui/material/Checkbox'
+import Chip from '@mui/material/Chip'
+import TextField from '@mui/material/TextField'
+import FormControl from '@mui/material/FormControl'
+import InputLabel from '@mui/material/InputLabel'
+import Select from '@mui/material/Select'
+import MenuItem from '@mui/material/MenuItem'
+import Toolbar from '@mui/material/Toolbar'
+import Dialog from '@mui/material/Dialog'
+import DialogTitle from '@mui/material/DialogTitle'
+import DialogContent from '@mui/material/DialogContent'
+import DialogActions from '@mui/material/DialogActions'
+import Collapse from '@mui/material/Collapse'
+import Tooltip from '@mui/material/Tooltip'
+import CircularProgress from '@mui/material/CircularProgress'
+import { Filter, Plus, X } from 'lucide-react'
 import { CategoryPicker } from './CategoryPicker'
 import { useTransactions } from './useTransactions'
+import type { TransactionFilter } from './useTransactions'
+import { AddTransactionDialog } from './AddTransactionDialog'
 import type { Transaction } from '@/db/schema'
-import { cn } from '@/lib/utils'
 
 interface PendingChange {
   tx: Transaction
@@ -15,9 +41,38 @@ interface PendingChange {
   samePayeeCount: number
 }
 
+const EMPTY_FILTERS: TransactionFilter = {}
+
 export function TransactionList() {
-  const { transactions, categories, setCategory, setCategoryAllByPayee, countSamePayee } = useTransactions()
+  const [showFilters, setShowFilters] = useState(false)
+  const [filters, setFilters] = useState<TransactionFilter>(EMPTY_FILTERS)
+  const [selected, setSelected] = useState<Set<number>>(new Set())
+  const [bulkCategoryId, setBulkCategoryId] = useState<string>('')
   const [pending, setPending] = useState<PendingChange | null>(null)
+  const [showAdd, setShowAdd] = useState(false)
+
+  const { transactions, categories, accounts, setCategory, setCategoryAllByPayee, setCategoryBulk, countSamePayee } =
+    useTransactions(filters)
+
+  const allIds = (transactions ?? []).map(t => t.id!)
+  const allSelected = allIds.length > 0 && allIds.every(id => selected.has(id))
+  const someSelected = allIds.some(id => selected.has(id)) && !allSelected
+
+  function toggleSelectAll() {
+    if (allSelected) {
+      setSelected(new Set())
+    } else {
+      setSelected(new Set(allIds))
+    }
+  }
+
+  function toggleRow(id: number) {
+    setSelected(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
 
   async function handleCategoryChange(tx: Transaction, categoryId: number) {
     const count = await countSamePayee(tx)
@@ -40,124 +95,303 @@ export function TransactionList() {
     setPending(null)
   }
 
-  if (!transactions || !categories) {
-    return <p className="text-muted-foreground text-sm">Carregando...</p>
+  async function applyBulk() {
+    if (!bulkCategoryId) return
+    await setCategoryBulk(Array.from(selected), Number(bulkCategoryId))
+    setSelected(new Set())
+    setBulkCategoryId('')
   }
 
-  if (transactions.length === 0) {
+  function clearFilters() {
+    setFilters(EMPTY_FILTERS)
+  }
+
+  const hasFilters = Object.keys(filters).some(k => filters[k as keyof TransactionFilter] !== undefined)
+  const selectedCount = selected.size
+
+  if (!transactions || !categories) {
     return (
-      <div className="space-y-4">
-        <h2 className="text-2xl font-semibold">Transações</h2>
-        <p className="text-muted-foreground text-sm">Nenhuma transação. Importe um arquivo OFX para começar.</p>
-      </div>
+      <Box sx={{ display: 'flex', justifyContent: 'center', pt: 4 }}>
+        <CircularProgress size={24} />
+      </Box>
     )
   }
 
   const isIncome = pending ? pending.tx.amount > 0 : false
   const partyLabel = isIncome ? 'remetente' : 'destinatário'
-  const categoryName = pending
-    ? (categories.find(c => c.id === pending.categoryId)?.name ?? '')
-    : ''
+  const categoryName = pending ? (categories.find(c => c.id === pending.categoryId)?.name ?? '') : ''
 
   return (
-    <div className="space-y-4">
-      <h2 className="text-2xl font-semibold">Transações</h2>
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      {/* Header */}
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+        <Typography variant="h5" sx={{ fontWeight: 700, flexGrow: 1 }}>Transações</Typography>
+        <Tooltip title="Filtros">
+          <IconButton
+            onClick={() => setShowFilters(v => !v)}
+            color={showFilters ? 'primary' : 'default'}
+            size="small"
+          >
+            <Filter size={18} />
+          </IconButton>
+        </Tooltip>
+        <Button
+          variant="contained"
+          startIcon={<Plus size={16} />}
+          onClick={() => setShowAdd(true)}
+          size="small"
+        >
+          Nova transação
+        </Button>
+      </Box>
 
-      <div className="rounded-lg border overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/50 text-muted-foreground">
-            <tr>
-              <th className="text-left px-4 py-2 font-medium">Data</th>
-              <th className="text-left px-4 py-2 font-medium">Descrição</th>
-              <th className="text-right px-4 py-2 font-medium">Valor</th>
-              <th className="text-left px-4 py-2 font-medium">Categoria</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {(transactions as Transaction[]).map(tx => (
-              <TransactionRow
-                key={tx.id}
-                tx={tx}
-                categories={categories}
-                onCategoryChange={(catId: number) => handleCategoryChange(tx, catId)}
-              />
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {/* Filter bar */}
+      <Collapse in={showFilters}>
+        <Paper variant="outlined" sx={{ p: 2 }}>
+          <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+            <TextField
+              label="Payee"
+              size="small"
+              value={filters.payeeSearch ?? ''}
+              onChange={e => setFilters(f => ({ ...f, payeeSearch: e.target.value || undefined }))}
+              sx={{ minWidth: 160 }}
+              placeholder="Buscar por descrição"
+            />
+            <TextField
+              label="De"
+              type="date"
+              size="small"
+              value={filters.dateFrom ? format(filters.dateFrom, 'yyyy-MM-dd') : ''}
+              onChange={e => setFilters(f => ({ ...f, dateFrom: e.target.value ? new Date(e.target.value + 'T00:00:00') : undefined }))}
+              slotProps={{ inputLabel: { shrink: true } }}
+              sx={{ minWidth: 140 }}
+            />
+            <TextField
+              label="Até"
+              type="date"
+              size="small"
+              value={filters.dateTo ? format(filters.dateTo, 'yyyy-MM-dd') : ''}
+              onChange={e => setFilters(f => ({ ...f, dateTo: e.target.value ? new Date(e.target.value + 'T23:59:59') : undefined }))}
+              slotProps={{ inputLabel: { shrink: true } }}
+              sx={{ minWidth: 140 }}
+            />
+            <FormControl size="small" sx={{ minWidth: 140 }}>
+              <InputLabel>Categoria</InputLabel>
+              <Select
+                label="Categoria"
+                value={filters.categoryId !== undefined ? String(filters.categoryId) : ''}
+                onChange={(e: SelectChangeEvent<string>) =>
+                  setFilters(f => ({ ...f, categoryId: e.target.value ? Number(e.target.value) : undefined }))
+                }
+              >
+                <MenuItem value=""><em>Todas</em></MenuItem>
+                {(categories ?? []).map(c => (
+                  <MenuItem key={c.id} value={String(c.id)}>{c.name}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            {(accounts?.length ?? 0) > 1 && (
+              <FormControl size="small" sx={{ minWidth: 130 }}>
+                <InputLabel>Conta</InputLabel>
+                <Select
+                  label="Conta"
+                  value={filters.accountId !== undefined ? String(filters.accountId) : ''}
+                  onChange={(e: SelectChangeEvent<string>) =>
+                    setFilters(f => ({ ...f, accountId: e.target.value ? Number(e.target.value) : undefined }))
+                  }
+                >
+                  <MenuItem value=""><em>Todas</em></MenuItem>
+                  {accounts!.map(a => (
+                    <MenuItem key={a.id} value={String(a.id)}>{a.bankName || a.acctId}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            )}
+            <TextField
+              label="Valor mín"
+              size="small"
+              type="number"
+              value={filters.amountMin ?? ''}
+              onChange={e => setFilters(f => ({ ...f, amountMin: e.target.value ? Number(e.target.value) : undefined }))}
+              sx={{ minWidth: 110 }}
+              slotProps={{ htmlInput: { min: 0, step: 0.01 } }}
+            />
+            <TextField
+              label="Valor máx"
+              size="small"
+              type="number"
+              value={filters.amountMax ?? ''}
+              onChange={e => setFilters(f => ({ ...f, amountMax: e.target.value ? Number(e.target.value) : undefined }))}
+              sx={{ minWidth: 110 }}
+              slotProps={{ htmlInput: { min: 0, step: 0.01 } }}
+            />
+            {hasFilters && (
+              <Button size="small" startIcon={<X size={14} />} onClick={clearFilters} color="inherit">
+                Limpar
+              </Button>
+            )}
+          </Box>
+        </Paper>
+      </Collapse>
 
-      <Dialog open={pending !== null} onOpenChange={open => { if (!open) setPending(null) }}>
+      {/* Bulk edit toolbar */}
+      <Collapse in={selectedCount > 0}>
+        <Paper variant="outlined" sx={{ bgcolor: 'primary.50' }}>
+          <Toolbar variant="dense" sx={{ gap: 2, flexWrap: 'wrap', minHeight: 48 }}>
+            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+              {selectedCount} selecionada{selectedCount !== 1 ? 's' : ''}
+            </Typography>
+            <FormControl size="small" sx={{ minWidth: 160 }}>
+              <InputLabel>Categoria</InputLabel>
+              <Select
+                label="Categoria"
+                value={bulkCategoryId}
+                onChange={(e: SelectChangeEvent<string>) => setBulkCategoryId(e.target.value)}
+              >
+                <MenuItem value=""><em>Selecionar</em></MenuItem>
+                {(categories ?? []).map(c => (
+                  <MenuItem key={c.id} value={String(c.id)}>{c.name}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <Button
+              variant="contained"
+              size="small"
+              disabled={!bulkCategoryId}
+              onClick={applyBulk}
+            >
+              Aplicar
+            </Button>
+            <Button size="small" color="inherit" onClick={() => setSelected(new Set())}>
+              Cancelar
+            </Button>
+          </Toolbar>
+        </Paper>
+      </Collapse>
+
+      {transactions.length === 0 ? (
+        <Typography variant="body2" color="text.secondary">
+          Nenhuma transação encontrada.
+        </Typography>
+      ) : (
+        <TableContainer component={Paper} variant="outlined">
+          <Table size="small">
+            <TableHead>
+              <TableRow sx={{ bgcolor: 'action.hover' }}>
+                <TableCell padding="checkbox">
+                  <Checkbox
+                    size="small"
+                    checked={allSelected}
+                    indeterminate={someSelected}
+                    onChange={toggleSelectAll}
+                  />
+                </TableCell>
+                <TableCell sx={{ color: 'text.secondary', fontWeight: 500 }}>Data</TableCell>
+                <TableCell sx={{ color: 'text.secondary', fontWeight: 500 }}>Descrição</TableCell>
+                <TableCell align="right" sx={{ color: 'text.secondary', fontWeight: 500 }}>Valor</TableCell>
+                <TableCell sx={{ color: 'text.secondary', fontWeight: 500 }}>Categoria</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {transactions.map(tx => {
+                const isRowIncome = tx.amount > 0
+                const catColor = tx.categoryId
+                  ? categories.find(c => c.id === tx.categoryId)?.color
+                  : undefined
+                const fmtCurrency = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: tx.currency })
+                const isSelected = selected.has(tx.id!)
+
+                return (
+                  <TableRow
+                    key={tx.id}
+                    hover
+                    selected={isSelected}
+                    onClick={() => toggleRow(tx.id!)}
+                    sx={{
+                      cursor: 'pointer',
+                      '& td:nth-of-type(2)': {
+                        borderLeft: `3px solid ${catColor ?? 'transparent'}`,
+                      },
+                    }}
+                  >
+                    <TableCell padding="checkbox" onClick={e => e.stopPropagation()}>
+                      <Checkbox
+                        size="small"
+                        checked={isSelected}
+                        onChange={() => toggleRow(tx.id!)}
+                      />
+                    </TableCell>
+                    <TableCell sx={{ color: 'text.secondary', whiteSpace: 'nowrap', fontSize: 13 }}>
+                      {format(tx.date, 'dd/MM/yyyy', { locale: ptBR })}
+                    </TableCell>
+                    <TableCell sx={{ maxWidth: { xs: 140, sm: 280 } }}>
+                      <Typography variant="body2" noWrap sx={{ fontWeight: 500 }}>{tx.payee}</Typography>
+                      {tx.transactionSubtype !== 'other' && (
+                        <Chip
+                          label={subtypeLabel(tx.transactionSubtype)}
+                          size="small"
+                          variant="outlined"
+                          sx={{ fontSize: 11, height: 18, mt: 0.25 }}
+                        />
+                      )}
+                    </TableCell>
+                    <TableCell
+                      align="right"
+                      sx={{
+                        fontFamily: 'monospace',
+                        whiteSpace: 'nowrap',
+                        fontSize: 13,
+                        color: isRowIncome ? 'success.main' : 'text.primary',
+                      }}
+                    >
+                      {isRowIncome ? '+' : ''}{fmtCurrency.format(tx.amount)}
+                    </TableCell>
+                    <TableCell onClick={e => e.stopPropagation()}>
+                      <CategoryPicker
+                        value={tx.categoryId}
+                        categories={categories}
+                        onChange={catId => handleCategoryChange(tx, catId)}
+                      />
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
+
+      {/* Same-payee category dialog */}
+      <Dialog open={pending !== null} onClose={() => setPending(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Aplicar categoria</DialogTitle>
         <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Aplicar categoria</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground">
+          <Typography variant="body2" color="text.secondary">
             Existem <strong>{pending?.samePayeeCount}</strong> outra(s) transação(ões) do mesmo{' '}
-            {partyLabel} <strong>&quot;{pending?.tx.payee}&quot;</strong>.
-            Deseja aplicar a categoria <strong>&quot;{categoryName}&quot;</strong> a todas elas também?
-          </p>
-          <DialogFooter className="flex-col sm:flex-row gap-2">
-            <Button variant="outline" onClick={applyOne}>
-              Apenas esta transação
-            </Button>
-            <Button onClick={applyAll}>
-              Todas as {(pending?.samePayeeCount ?? 0) + 1} transações
-            </Button>
-          </DialogFooter>
+            {partyLabel} <strong>"{pending?.tx.payee}"</strong>.
+            Deseja aplicar a categoria <strong>"{categoryName}"</strong> a todas elas também?
+          </Typography>
         </DialogContent>
+        <DialogActions sx={{ flexDirection: { xs: 'column', sm: 'row' }, gap: 1, p: 2 }}>
+          <Button variant="outlined" onClick={applyOne} fullWidth>
+            Apenas esta transação
+          </Button>
+          <Button variant="contained" onClick={applyAll} fullWidth>
+            Todas as {(pending?.samePayeeCount ?? 0) + 1} transações
+          </Button>
+        </DialogActions>
       </Dialog>
-    </div>
-  )
-}
 
-function TransactionRow({
-  tx,
-  categories,
-  onCategoryChange,
-}: {
-  tx: Transaction
-  categories: ReturnType<typeof useTransactions>['categories']
-  onCategoryChange: (id: number) => void
-}) {
-  const isIncome = tx.amount > 0
-  const categoryColor = tx.categoryId
-    ? (categories ?? []).find(c => c.id === tx.categoryId)?.color
-    : undefined
-
-  return (
-    <tr className="hover:bg-muted/30 transition-colors" style={{ borderLeft: `3px solid ${categoryColor ?? 'transparent'}` }}>
-      <td className="px-4 py-2 text-muted-foreground whitespace-nowrap">
-        {format(tx.date, 'dd/MM/yyyy', { locale: ptBR })}
-      </td>
-      <td className="px-4 py-2">
-        <div className="font-medium truncate max-w-xs">{tx.payee}</div>
-        {tx.transactionSubtype !== 'other' && (
-          <Badge variant="secondary" className="text-xs mt-0.5">
-            {subtypeLabel(tx.transactionSubtype)}
-          </Badge>
-        )}
-      </td>
-      <td className={cn('px-4 py-2 text-right font-mono whitespace-nowrap', isIncome ? 'text-green-600' : '')}>
-        {isIncome ? '+' : ''}{formatCurrency(tx.amount, tx.currency)}
-      </td>
-      <td className="px-4 py-2">
-        <CategoryPicker
-          value={tx.categoryId}
-          categories={categories ?? []}
-          onChange={onCategoryChange}
-        />
-      </td>
-    </tr>
+      <AddTransactionDialog open={showAdd} onClose={() => setShowAdd(false)} />
+    </Box>
   )
 }
 
 function subtypeLabel(s: Transaction['transactionSubtype']): string {
   const map: Record<typeof s, string> = {
-    pix_out: 'Pix enviado', pix_in: 'Pix recebido', debit_card: 'Débito', other: '',
+    pix_out: 'Pix enviado',
+    pix_in: 'Pix recebido',
+    debit_card: 'Débito',
+    other: '',
   }
   return map[s]
-}
-
-function formatCurrency(amount: number, currency: string): string {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency }).format(amount)
 }
