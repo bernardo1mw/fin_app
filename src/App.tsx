@@ -3,6 +3,7 @@ import { ThemeProvider, createTheme } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
 import { AppShell } from '@/components/layout/AppShell'
 import { CloudLoginDialog } from '@/features/auth/CloudLoginDialog'
+import { PendingInvitesDialog } from '@/features/auth/PendingInvitesDialog'
 import { DashboardPage } from '@/features/dashboard/DashboardPage'
 import { TransactionList } from '@/features/transactions/TransactionList'
 import { ImportPage } from '@/features/import/ImportPage'
@@ -27,6 +28,7 @@ export default function App() {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <CloudLoginDialog />
+      <PendingInvitesDialog />
       <HashRouter>
         <Routes>
           <Route element={<AppShell />}>
