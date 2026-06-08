@@ -3,7 +3,7 @@ import type { Transaction, CategoryRule } from '@/db/schema'
 
 type PartialTransaction = Pick<Transaction, 'cnpjPrefix' | 'payee' | 'memo'>
 
-export async function applyRules(tx: PartialTransaction): Promise<number | null> {
+export async function applyRules(tx: PartialTransaction): Promise<string | null> {
   const rules = await db.categoryRules.orderBy('priority').reverse().toArray()
 
   for (const rule of rules) {
@@ -18,7 +18,7 @@ export async function applyRules(tx: PartialTransaction): Promise<number | null>
   return null
 }
 
-export async function upsertRuleForTransaction(tx: Pick<Transaction, 'cnpjPrefix' | 'payee'>, categoryId: number) {
+export async function upsertRuleForTransaction(tx: Pick<Transaction, 'cnpjPrefix' | 'payee'>, categoryId: string) {
   if (tx.cnpjPrefix) {
     const existing = await db.categoryRules.where('cnpjPrefix').equals(tx.cnpjPrefix).first()
     if (existing) {

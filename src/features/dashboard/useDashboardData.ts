@@ -12,7 +12,7 @@ export function useDashboardData() {
     const categories = await db.categories.toArray()
     const catMap = Object.fromEntries(categories.map(c => [c.id!, c]))
 
-    const map: Record<number, { name: string; value: number; color: string }> = {}
+    const map: Record<string, { name: string; value: number; color: string }> = {}
     for (const tx of txs) {
       if (tx.amount >= 0 || !tx.categoryId) continue
       const cat = catMap[tx.categoryId]

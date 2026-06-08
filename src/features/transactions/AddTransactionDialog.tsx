@@ -50,9 +50,10 @@ export function AddTransactionDialog({ open, onClose }: Props) {
 
     const amount = direction === 'expense' ? -rawAmount : rawAmount
     const txDate = new Date(date + 'T12:00:00')
-    const chosenAccountId = accountId ? Number(accountId) : (accounts?.[0]?.id ?? 0)
+    const chosenAccountId = accountId || accounts?.[0]?.id || ''
 
     await db.transactions.add({
+      id: crypto.randomUUID(),
       fitId: 'manual-' + crypto.randomUUID(),
       accountId: chosenAccountId,
       date: txDate,
@@ -61,7 +62,7 @@ export function AddTransactionDialog({ open, onClose }: Props) {
       memo: memo.trim(),
       transactionSubtype: direction === 'income' ? 'pix_in' : 'other',
       cnpjPrefix: null,
-      categoryId: categoryId ? Number(categoryId) : null,
+      categoryId: categoryId || null,
       trnType: 'OTHER',
       currency: 'BRL',
     })

@@ -12,12 +12,12 @@ class FinanceDB extends Dexie {
   userProfile!: EntityTable<UserProfile, 'id'>
 
   constructor() {
-    super('FinanceDB', { addons: CLOUD_URL ? [dexieCloud] : [] })
+    super('FinanceDB2', { addons: CLOUD_URL ? [dexieCloud] : [] })
     this.version(1).stores({
-      transactions: '++id, [accountId+fitId], date, amount, payee, categoryId, accountId, cnpjPrefix, transactionSubtype',
-      categories: '++id, name, type',
-      categoryRules: '++id, cnpjPrefix, namePattern, categoryId, priority',
-      accounts: '++id, bankId, acctId',
+      transactions: 'id, [accountId+fitId], date, amount, payee, categoryId, accountId, cnpjPrefix, transactionSubtype',
+      categories: 'id, name, type',
+      categoryRules: 'id, cnpjPrefix, namePattern, categoryId, priority',
+      accounts: 'id, bankId, acctId',
       userProfile: 'id',
     })
     if (CLOUD_URL) {
@@ -25,6 +25,7 @@ class FinanceDB extends Dexie {
         databaseUrl: CLOUD_URL,
         requireAuth: false,
         customLoginGui: true,
+        unsyncedTables: ['userProfile'],
       })
     }
   }

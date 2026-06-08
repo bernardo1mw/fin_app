@@ -11,7 +11,7 @@ export interface ImportedRow {
   payee: string
   transactionSubtype: TransactionSubtype
   currency: string
-  categoryId: number | null
+  categoryId: string | null
 }
 
 export interface ImportResult {
@@ -43,7 +43,7 @@ export function useImport() {
         a => a.bankId === parsed.account.bankId && a.acctId === parsed.account.acctId
       ).first()
 
-      let accountId: number
+      let accountId: string
       if (account) {
         accountId = account.id!
         await db.accounts.update(accountId, {
@@ -51,7 +51,7 @@ export function useImport() {
           ledgerBalanceAsOf: parsed.account.ledgerBalanceAsOf,
         })
       } else {
-        accountId = await db.accounts.add(parsed.account) as number
+        accountId = await db.accounts.add({ ...parsed.account, id: crypto.randomUUID() }) as string
       }
 
       const existingFitIds = new Set(
@@ -81,7 +81,7 @@ export function useImport() {
           row.categoryId = categoryId
           if (categoryId !== null) res.categorized++
 
-          await db.transactions.add({ ...tx, accountId, categoryId })
+          await db.transactions.add({ ...tx, id: crypto.randomUUID(), accountId, categoryId })
           existingFitIds.add(tx.fitId)
           res.imported++
           res.importedRows.push(row)

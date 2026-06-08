@@ -16,12 +16,13 @@ const DEFAULT_CATEGORIES: Omit<Category, 'id'>[] = [
 ]
 
 async function insertDefaultCategories() {
-  const categoryIds = await db.categories.bulkAdd(DEFAULT_CATEGORIES, { allKeys: true }) as number[]
-  const transporteId = categoryIds[1]
-  const seedRules: Omit<CategoryRule, 'id'>[] = [
-    { cnpjPrefix: '14796606', namePattern: null, matchField: 'cnpj', categoryId: transporteId, priority: 10 },
-    { cnpjPrefix: '30306294', namePattern: null, matchField: 'cnpj', categoryId: transporteId, priority: 10 },
-    { cnpjPrefix: null, namePattern: 'bus servicos', matchField: 'name', categoryId: categoryIds[7], priority: 5 },
+  const withIds: Category[] = DEFAULT_CATEGORIES.map(c => ({ ...c, id: crypto.randomUUID() }))
+  await db.categories.bulkAdd(withIds)
+  const transporteId = withIds[1].id!
+  const seedRules: CategoryRule[] = [
+    { id: crypto.randomUUID(), cnpjPrefix: '14796606', namePattern: null, matchField: 'cnpj', categoryId: transporteId, priority: 10 },
+    { id: crypto.randomUUID(), cnpjPrefix: '30306294', namePattern: null, matchField: 'cnpj', categoryId: transporteId, priority: 10 },
+    { id: crypto.randomUUID(), cnpjPrefix: null, namePattern: 'bus servicos', matchField: 'name', categoryId: withIds[7].id!, priority: 5 },
   ]
   await db.categoryRules.bulkAdd(seedRules)
 }

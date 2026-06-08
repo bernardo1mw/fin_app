@@ -30,7 +30,7 @@ export function CategoryManager() {
   const [creating, setCreating] = useState(false)
   const [confirming, setConfirming] = useState(false)
 
-  async function handleDelete(id: number) {
+  async function handleDelete(id: string) {
     await db.categories.delete(id)
   }
 

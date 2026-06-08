@@ -5,25 +5,25 @@ import type { SelectChangeEvent } from '@mui/material/Select'
 import type { Category } from '@/db/schema'
 
 interface Props {
-  value: number | null
+  value: string | null
   categories: Category[]
-  onChange: (categoryId: number) => void
+  onChange: (categoryId: string) => void
 }
 
 export function CategoryPicker({ value, categories, onChange }: Props) {
   return (
     <FormControl size="small" sx={{ minWidth: 140 }}>
       <Select
-        value={value !== null && value !== undefined ? String(value) : ''}
+        value={value ?? ''}
         onChange={(e: SelectChangeEvent<string>) => {
-          if (e.target.value !== '') onChange(Number(e.target.value))
+          if (e.target.value) onChange(e.target.value)
         }}
         displayEmpty
         sx={{ fontSize: 13 }}
       >
         <MenuItem value=""><em style={{ fontSize: 13 }}>Sem categoria</em></MenuItem>
         {categories.map(cat => (
-          <MenuItem key={cat.id} value={String(cat.id)} sx={{ fontSize: 13 }}>{cat.name}</MenuItem>
+          <MenuItem key={cat.id} value={cat.id!} sx={{ fontSize: 13 }}>{cat.name}</MenuItem>
         ))}
       </Select>
     </FormControl>

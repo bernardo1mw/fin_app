@@ -4,8 +4,8 @@ import { upsertRuleForTransaction } from '@/features/categories/useCategorizatio
 import type { Transaction } from '@/db/schema'
 
 export interface TransactionFilter {
-  categoryId?: number
-  accountId?: number
+  categoryId?: string
+  accountId?: string
   dateFrom?: Date
   dateTo?: Date
   payeeSearch?: string
@@ -40,18 +40,18 @@ export function useTransactions(filter?: TransactionFilter) {
     return db.transactions.filter(t => t.payee === tx.payee && t.id !== tx.id).count()
   }
 
-  async function setCategory(tx: Transaction, categoryId: number) {
+  async function setCategory(tx: Transaction, categoryId: string) {
     await db.transactions.update(tx.id!, { categoryId })
     await upsertRuleForTransaction({ cnpjPrefix: tx.cnpjPrefix, payee: tx.payee }, categoryId)
   }
 
-  async function setCategoryAllByPayee(tx: Transaction, categoryId: number) {
+  async function setCategoryAllByPayee(tx: Transaction, categoryId: string) {
     const ids = await db.transactions.filter(t => t.payee === tx.payee).primaryKeys()
-    await db.transactions.where(':id').anyOf(ids as number[]).modify({ categoryId })
+    await db.transactions.where(':id').anyOf(ids as string[]).modify({ categoryId })
     await upsertRuleForTransaction({ cnpjPrefix: tx.cnpjPrefix, payee: tx.payee }, categoryId)
   }
 
-  async function setCategoryBulk(ids: number[], categoryId: number) {
+  async function setCategoryBulk(ids: string[], categoryId: string) {
     await db.transactions.where(':id').anyOf(ids).modify({ categoryId })
   }
 

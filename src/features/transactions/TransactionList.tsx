@@ -37,7 +37,7 @@ import type { Transaction } from '@/db/schema'
 
 interface PendingChange {
   tx: Transaction
-  categoryId: number
+  categoryId: string
   samePayeeCount: number
 }
 
@@ -46,7 +46,7 @@ const EMPTY_FILTERS: TransactionFilter = {}
 export function TransactionList() {
   const [showFilters, setShowFilters] = useState(false)
   const [filters, setFilters] = useState<TransactionFilter>(EMPTY_FILTERS)
-  const [selected, setSelected] = useState<Set<number>>(new Set())
+  const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkCategoryId, setBulkCategoryId] = useState<string>('')
   const [pending, setPending] = useState<PendingChange | null>(null)
   const [showAdd, setShowAdd] = useState(false)
@@ -66,7 +66,7 @@ export function TransactionList() {
     }
   }
 
-  function toggleRow(id: number) {
+  function toggleRow(id: string) {
     setSelected(prev => {
       const next = new Set(prev)
       next.has(id) ? next.delete(id) : next.add(id)
@@ -74,7 +74,7 @@ export function TransactionList() {
     })
   }
 
-  async function handleCategoryChange(tx: Transaction, categoryId: number) {
+  async function handleCategoryChange(tx: Transaction, categoryId: string) {
     const count = await countSamePayee(tx)
     if (count > 0) {
       setPending({ tx, categoryId, samePayeeCount: count })
@@ -97,7 +97,7 @@ export function TransactionList() {
 
   async function applyBulk() {
     if (!bulkCategoryId) return
-    await setCategoryBulk(Array.from(selected), Number(bulkCategoryId))
+    await setCategoryBulk(Array.from(selected), bulkCategoryId)
     setSelected(new Set())
     setBulkCategoryId('')
   }
@@ -179,14 +179,14 @@ export function TransactionList() {
               <InputLabel>Categoria</InputLabel>
               <Select
                 label="Categoria"
-                value={filters.categoryId !== undefined ? String(filters.categoryId) : ''}
+                value={filters.categoryId ?? ''}
                 onChange={(e: SelectChangeEvent<string>) =>
-                  setFilters(f => ({ ...f, categoryId: e.target.value ? Number(e.target.value) : undefined }))
+                  setFilters(f => ({ ...f, categoryId: e.target.value || undefined }))
                 }
               >
                 <MenuItem value=""><em>Todas</em></MenuItem>
                 {(categories ?? []).map(c => (
-                  <MenuItem key={c.id} value={String(c.id)}>{c.name}</MenuItem>
+                  <MenuItem key={c.id} value={c.id!}>{c.name}</MenuItem>
                 ))}
               </Select>
             </FormControl>
@@ -195,14 +195,14 @@ export function TransactionList() {
                 <InputLabel>Conta</InputLabel>
                 <Select
                   label="Conta"
-                  value={filters.accountId !== undefined ? String(filters.accountId) : ''}
+                  value={filters.accountId ?? ''}
                   onChange={(e: SelectChangeEvent<string>) =>
-                    setFilters(f => ({ ...f, accountId: e.target.value ? Number(e.target.value) : undefined }))
+                    setFilters(f => ({ ...f, accountId: e.target.value || undefined }))
                   }
                 >
                   <MenuItem value=""><em>Todas</em></MenuItem>
                   {accounts!.map(a => (
-                    <MenuItem key={a.id} value={String(a.id)}>{a.bankName || a.acctId}</MenuItem>
+                    <MenuItem key={a.id} value={a.id!}>{a.bankName || a.acctId}</MenuItem>
                   ))}
                 </Select>
               </FormControl>

@@ -32,7 +32,7 @@ export function ImportPage() {
   const [page, setPage] = useState(0)
 
   const categories = useLiveQuery(() => db.categories.toArray())
-  const catMap = Object.fromEntries((categories ?? []).map(c => [c.id!, c.name]))
+  const catMap: Record<string, string> = Object.fromEntries((categories ?? []).map(c => [c.id!, c.name]))
 
   const handleFiles = useCallback(async (files: FileList | null) => {
     if (!files?.length) return
@@ -161,7 +161,7 @@ export function ImportPage() {
   )
 }
 
-function ResultRow({ row, showCategory, catMap }: { row: ImportedRow; showCategory: boolean; catMap: Record<number, string> }) {
+function ResultRow({ row, showCategory, catMap }: { row: ImportedRow; showCategory: boolean; catMap: Record<string, string> }) {
   const isIncome = row.amount > 0
   const fmtCurrency = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: row.currency })
   return (

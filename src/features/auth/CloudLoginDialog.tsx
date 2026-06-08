@@ -40,14 +40,11 @@ export function CloudLoginDialog() {
     }
   }, [interaction?.type])
 
-  if (!interaction) return null
-
   async function handleSubmit() {
     if (!interaction) return
     setSubmitting(true)
     try {
       await interaction.onSubmit(values as Parameters<typeof interaction.onSubmit>[0])
-      // Kick off sync after login completes
       if (cloudEnabled) db.cloud.sync().catch(() => {})
     } finally {
       setSubmitting(false)
@@ -59,71 +56,76 @@ export function CloudLoginDialog() {
   }
 
   const alertSeverityMap = { error: 'error', warning: 'warning', info: 'info' } as const
-  const isOtp = interaction.type === 'otp'
+  const isOtp = interaction?.type === 'otp'
 
+  // Always render Dialog and drive open via prop so MUI cleans up properly
   return (
     <Dialog
-      open
+      open={!!interaction}
       maxWidth="xs"
       fullWidth
       onClose={(_e, reason) => { if (reason !== 'backdropClick') handleCancel() }}
       disableRestoreFocus
     >
-      <DialogTitle>{interaction.title}</DialogTitle>
+      {interaction && (
+        <>
+          <DialogTitle>{interaction.title}</DialogTitle>
 
-      <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '12px !important' }}>
-        {interaction.alerts.map((alert, i) => (
-          <Alert key={i} severity={alertSeverityMap[alert.type]}>
-            {interpolate(alert.message, alert.messageParams)}
-          </Alert>
-        ))}
+          <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '12px !important' }}>
+            {interaction.alerts.map((alert, i) => (
+              <Alert key={i} severity={alertSeverityMap[alert.type]}>
+                {interpolate(alert.message, alert.messageParams)}
+              </Alert>
+            ))}
 
-        {isOtp && interaction.alerts.length === 0 && (
-          <Typography variant="body2" color="text.secondary">
-            Verifique seu email e cole o código abaixo.
-          </Typography>
-        )}
+            {isOtp && interaction.alerts.length === 0 && (
+              <Typography variant="body2" color="text.secondary">
+                Verifique seu email e cole o código abaixo.
+              </Typography>
+            )}
 
-        {Object.entries(interaction.fields).map(([name, field]) => {
-          const f = field as DXCInputField
-          return (
-            <TextField
-              key={name}
-              label={f.label ?? name}
-              placeholder={f.placeholder}
-              type={f.type === 'otp' ? 'text' : f.type}
-              size="small"
-              fullWidth
-              autoFocus
-              value={values[name] ?? ''}
-              onChange={e => setValues(v => ({ ...v, [name]: e.target.value }))}
-              onKeyDown={e => { if (e.key === 'Enter') handleSubmit() }}
-              slotProps={{
-                htmlInput: {
-                  autoComplete: name === 'otp' ? 'one-time-code' : undefined,
-                  inputMode: name === 'otp' ? 'numeric' : undefined,
-                },
-              }}
-            />
-          )
-        })}
-      </DialogContent>
+            {Object.entries(interaction.fields).map(([name, field]) => {
+              const f = field as DXCInputField
+              return (
+                <TextField
+                  key={name}
+                  label={f.label ?? name}
+                  placeholder={f.placeholder}
+                  type={f.type === 'otp' ? 'text' : f.type}
+                  size="small"
+                  fullWidth
+                  autoFocus
+                  value={values[name] ?? ''}
+                  onChange={e => setValues(v => ({ ...v, [name]: e.target.value }))}
+                  onKeyDown={e => { if (e.key === 'Enter') handleSubmit() }}
+                  slotProps={{
+                    htmlInput: {
+                      autoComplete: name === 'otp' ? 'one-time-code' : undefined,
+                      inputMode: name === 'otp' ? 'numeric' : undefined,
+                    },
+                  }}
+                />
+              )
+            })}
+          </DialogContent>
 
-      <DialogActions sx={{ px: 3, pb: 2, gap: 1 }}>
-        {interaction.cancelLabel && (
-          <Button onClick={handleCancel} color="inherit" disabled={submitting}>
-            {interaction.cancelLabel}
-          </Button>
-        )}
-        <Button
-          variant="contained"
-          onClick={handleSubmit}
-          disabled={submitting}
-          startIcon={submitting ? <CircularProgress size={14} color="inherit" /> : undefined}
-        >
-          {interaction.submitLabel}
-        </Button>
-      </DialogActions>
+          <DialogActions sx={{ px: 3, pb: 2, gap: 1 }}>
+            {interaction.cancelLabel && (
+              <Button onClick={handleCancel} color="inherit" disabled={submitting}>
+                {interaction.cancelLabel}
+              </Button>
+            )}
+            <Button
+              variant="contained"
+              onClick={handleSubmit}
+              disabled={submitting}
+              startIcon={submitting ? <CircularProgress size={14} color="inherit" /> : undefined}
+            >
+              {interaction.submitLabel}
+            </Button>
+          </DialogActions>
+        </>
+      )}
     </Dialog>
   )
 }

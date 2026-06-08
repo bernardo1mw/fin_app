@@ -7,6 +7,9 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+dexie-*.key
+dexie-*.json
+Extrato-*
 plans
 node_modules
 dist

@@ -46,12 +46,14 @@ function useCloudUser() {
 function SyncStatusChip() {
   const state = useSyncState()
   const user = useCloudUser()
-  if (!state || !user?.isLoggedIn) return null
+  if (!user?.isLoggedIn) return null
+  if (!state || state.status === 'not-started') {
+    return <Chip icon={<CircularProgress size={12} />} label="Conectando..." size="small" color="info" />
+  }
   const { phase, status } = state
   if (phase === 'error' || status === 'error') return <Chip icon={<CloudOff size={14} />} label="Erro de sync" size="small" color="error" />
-  if (phase === 'offline' || status === 'offline') return <Chip icon={<CloudOff size={14} />} label="Offline" size="small" />
-  if (status === 'disconnected') return <Chip icon={<CloudOff size={14} />} label="Offline" size="small" />
-  if (phase === 'pushing' || phase === 'pulling' || status === 'connecting' || status === 'not-started' || phase === 'initial' || phase === 'not-in-sync') {
+  if (phase === 'offline' || status === 'offline' || status === 'disconnected') return <Chip icon={<CloudOff size={14} />} label="Offline" size="small" />
+  if (phase === 'pushing' || phase === 'pulling' || phase === 'initial' || phase === 'not-in-sync' || status === 'connecting') {
     return <Chip icon={<CircularProgress size={12} />} label="Sincronizando..." size="small" color="info" />
   }
   return <Chip icon={<Cloud size={14} />} label="Sincronizado" size="small" color="success" variant="outlined" />
@@ -169,10 +171,13 @@ export function SettingsPage() {
               </>
             ) : (
               <>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                   <Typography variant="body2" color="text.secondary">Logado como</Typography>
-                  <Typography variant="body2" sx={{ fontWeight: 500 }}>{cloudUser?.email}</Typography>
-                  <Button size="small" color="inherit" startIcon={<LogOut size={13} />} onClick={handleLogout} sx={{ ml: 'auto', fontSize: 12 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 500, flexGrow: 1 }}>{cloudUser?.email}</Typography>
+                  <Button size="small" variant="outlined" startIcon={<LogIn size={13} />} onClick={handleLogin} sx={{ fontSize: 12 }}>
+                    Alterar Email
+                  </Button>
+                  <Button size="small" color="inherit" startIcon={<LogOut size={13} />} onClick={handleLogout} sx={{ fontSize: 12 }}>
                     Sair
                   </Button>
                 </Box>

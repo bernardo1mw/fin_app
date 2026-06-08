@@ -40,7 +40,7 @@ export async function generateSuggestions(): Promise<Suggestion[]> {
 
   // Overspend by category vs last month
   const spendByCategory = (txs: Transaction[]) => {
-    const map: Record<number, number> = {}
+    const map: Record<string, number> = {}
     for (const tx of txs) {
       if (tx.amount >= 0 || !tx.categoryId) continue
       map[tx.categoryId] = (map[tx.categoryId] ?? 0) + Math.abs(tx.amount)

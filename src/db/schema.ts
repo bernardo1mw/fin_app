@@ -2,22 +2,22 @@ export type TransactionSubtype = 'pix_out' | 'pix_in' | 'debit_card' | 'other'
 export type CategoryType = 'income' | 'expense' | 'transfer'
 
 export interface Transaction {
-  id?: number
+  id?: string
   fitId: string
-  accountId: number
+  accountId: string
   date: Date
   amount: number
   payee: string
   memo: string
   transactionSubtype: TransactionSubtype
   cnpjPrefix: string | null
-  categoryId: number | null
+  categoryId: string | null
   trnType: string
   currency: string
 }
 
 export interface Category {
-  id?: number
+  id?: string
   name: string
   type: CategoryType
   color: string
@@ -25,16 +25,16 @@ export interface Category {
 }
 
 export interface CategoryRule {
-  id?: number
+  id?: string
   cnpjPrefix: string | null
   namePattern: string | null
   matchField: 'cnpj' | 'name' | 'memo'
-  categoryId: number
+  categoryId: string
   priority: number
 }
 
 export interface Account {
-  id?: number
+  id?: string
   bankId: string
   bankName: string
   branchId: string
