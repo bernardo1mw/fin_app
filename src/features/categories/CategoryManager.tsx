@@ -34,7 +34,7 @@ export function CategoryManager() {
         byName.set(c.name, c)
       }
     }
-    return Array.from(byName.values())
+    return Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
   })
   const [editing, setEditing] = useState<Category | null>(null)
   const [creating, setCreating] = useState(false)

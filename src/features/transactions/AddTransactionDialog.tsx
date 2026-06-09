@@ -128,8 +128,11 @@ export function AddTransactionDialog({ open, onClose }: Props) {
             onChange={(e: SelectChangeEvent<string>) => setCategoryId(e.target.value)}
           >
             <MenuItem value=""><em>Sem categoria</em></MenuItem>
-            {(categories ?? []).map(c => (
-              <MenuItem key={c.id} value={String(c.id)}>{c.name}</MenuItem>
+            {(categories ?? []).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')).map(c => (
+              <MenuItem key={c.id} value={String(c.id)} sx={{ gap: 1 }}>
+                <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: c.color, flexShrink: 0 }} />
+                {c.name}
+              </MenuItem>
             ))}
           </Select>
         </FormControl>

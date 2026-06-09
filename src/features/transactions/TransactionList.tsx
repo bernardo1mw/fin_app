@@ -141,6 +141,8 @@ export function TransactionList() {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      {/* Sticky top: title + filters + bulk toolbar */}
+      <Box sx={{ position: 'sticky', top: 0, zIndex: 10, bgcolor: 'background.default', pb: 0.5 }}>
       {/* Header */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
         <Typography variant="h5" sx={{ fontWeight: 700, flexGrow: 1 }}>Transações</Typography>
@@ -218,7 +220,10 @@ export function TransactionList() {
               >
                 <MenuItem value=""><em>Todas</em></MenuItem>
                 {(categories ?? []).map(c => (
-                  <MenuItem key={c.id} value={c.id!}>{c.name}</MenuItem>
+                  <MenuItem key={c.id} value={c.id!} sx={{ gap: 1 }}>
+                    <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: c.color, flexShrink: 0 }} />
+                    {c.name}
+                  </MenuItem>
                 ))}
               </Select>
             </FormControl>
@@ -282,7 +287,10 @@ export function TransactionList() {
               >
                 <MenuItem value=""><em>Selecionar</em></MenuItem>
                 {(categories ?? []).map(c => (
-                  <MenuItem key={c.id} value={String(c.id)}>{c.name}</MenuItem>
+                  <MenuItem key={c.id} value={String(c.id)} sx={{ gap: 1 }}>
+                    <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: c.color, flexShrink: 0 }} />
+                    {c.name}
+                  </MenuItem>
                 ))}
               </Select>
             </FormControl>
@@ -309,6 +317,7 @@ export function TransactionList() {
           </Toolbar>
         </Paper>
       </Collapse>
+      </Box>{/* end sticky top */}
 
       {transactions.length === 0 ? (
         <Typography variant="body2" color="text.secondary">

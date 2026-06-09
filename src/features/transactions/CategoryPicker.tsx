@@ -1,6 +1,7 @@
 import FormControl from '@mui/material/FormControl'
 import Select from '@mui/material/Select'
 import MenuItem from '@mui/material/MenuItem'
+import Box from '@mui/material/Box'
 import type { SelectChangeEvent } from '@mui/material/Select'
 import type { Category } from '@/db/schema'
 
@@ -23,7 +24,10 @@ export function CategoryPicker({ value, categories, onChange }: Props) {
       >
         <MenuItem value=""><em style={{ fontSize: 13 }}>Sem categoria</em></MenuItem>
         {categories.map(cat => (
-          <MenuItem key={cat.id} value={cat.id!} sx={{ fontSize: 13 }}>{cat.name}</MenuItem>
+          <MenuItem key={cat.id} value={cat.id!} sx={{ fontSize: 13, gap: 1 }}>
+            <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: cat.color, flexShrink: 0 }} />
+            {cat.name}
+          </MenuItem>
         ))}
       </Select>
     </FormControl>

@@ -45,7 +45,7 @@ export function useTransactions(filter?: TransactionFilter) {
         byName.set(c.name, c)
       }
     }
-    return Array.from(byName.values())
+    return Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
   })
   const accounts = useLiveQuery(() => db.accounts.toArray())
 
