@@ -13,11 +13,11 @@ class FinanceDB extends Dexie {
 
   constructor() {
     super('FinanceDB2', { addons: CLOUD_URL ? [dexieCloud] : [] })
-    this.version(1).stores({
-      transactions: 'id, [accountId+fitId], date, amount, payee, categoryId, accountId, cnpjPrefix, transactionSubtype',
-      categories: 'id, name, type',
-      categoryRules: 'id, cnpjPrefix, namePattern, categoryId, priority',
-      accounts: 'id, bankId, acctId',
+    this.version(2).stores({
+      transactions: 'id, [accountId+fitId], date, amount, payee, categoryId, accountId, cnpjPrefix, transactionSubtype, realmId',
+      categories: 'id, name, type, realmId',
+      categoryRules: 'id, cnpjPrefix, namePattern, categoryId, priority, realmId',
+      accounts: 'id, bankId, acctId, realmId',
       userProfile: 'id',
     })
     if (CLOUD_URL) {

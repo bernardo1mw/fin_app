@@ -1,6 +1,6 @@
 import { useState, useEffect, useSyncExternalStore } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Download, Eye, EyeOff, Save, Cloud, CloudOff, LogIn, LogOut, UserPlus } from 'lucide-react'
+import { Download, Eye, EyeOff, Save, Cloud, CloudOff, LogIn, LogOut, UserPlus, RefreshCw } from 'lucide-react'
 import type { SelectChangeEvent } from '@mui/material/Select'
 import { db, cloudEnabled } from '@/db/db'
 import Box from '@mui/material/Box'
@@ -70,6 +70,9 @@ export function SettingsPage() {
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviting, setInviting] = useState(false)
   const [inviteMsg, setInviteMsg] = useState('')
+  const [syncing, setSyncing] = useState(false)
+  const [syncError, setSyncError] = useState('')
+  const [showDiag, setShowDiag] = useState(false)
 
   const cloudUser = useCloudUser()
   const isLoggedIn = cloudUser?.isLoggedIn ?? false
@@ -125,18 +128,47 @@ export function SettingsPage() {
     await db.cloud.logout()
   }
 
+  async function handleForceSync() {
+    setSyncing(true)
+    setSyncError('')
+    try {
+      await db.cloud.sync()
+      await db.cloud.sync()
+    } catch (e) {
+      setSyncError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setSyncing(false)
+    }
+  }
+
   async function handleInvite() {
     if (!inviteEmail.trim() || !cloudUser?.userId) return
     setInviting(true)
     setInviteMsg('')
     try {
+      const email = inviteEmail.trim().toLowerCase()
+      // Delete any previous invites for this email to avoid stale entries
+      const existing = await db.table('members').toArray()
+      const toDelete = existing
+        .filter((m: any) => m.email === email && m.realmId === cloudUser.userId)
+        .map((m: any) => m.id)
+      if (toDelete.length) await db.table('members').bulkDelete(toDelete)
+
       await db.table('members').add({
         realmId: cloudUser.userId,
-        email: inviteEmail.trim(),
-        name: inviteEmail.trim(),
+        userId: email,
+        email,
+        name: email,
         invite: true,
+        // Do NOT pre-set accepted — must be accepted by the invitee themselves
+        permissions: {
+          add: '*',
+          update: { '*': ['*'] },
+          manage: '*',
+        },
       })
-      setInviteMsg(`Convite enviado para ${inviteEmail.trim()}!`)
+      await db.cloud.sync()
+      setInviteMsg(`Convite enviado para ${email}. Peça para a pessoa abrir o app e clicar em Sincronizar duas vezes.`)
       setInviteEmail('')
     } catch (e: unknown) {
       setInviteMsg(`Erro: ${e instanceof Error ? e.message : 'tente novamente'}`)
@@ -174,6 +206,16 @@ export function SettingsPage() {
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                   <Typography variant="body2" color="text.secondary">Logado como</Typography>
                   <Typography variant="body2" sx={{ fontWeight: 500, flexGrow: 1 }}>{cloudUser?.email}</Typography>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={syncing ? <CircularProgress size={12} /> : <RefreshCw size={13} />}
+                    onClick={handleForceSync}
+                    disabled={syncing}
+                    sx={{ fontSize: 12 }}
+                  >
+                    {syncing ? 'Sincronizando...' : 'Sincronizar'}
+                  </Button>
                   <Button size="small" variant="outlined" startIcon={<LogIn size={13} />} onClick={handleLogin} sx={{ fontSize: 12 }}>
                     Alterar Email
                   </Button>
@@ -214,6 +256,13 @@ export function SettingsPage() {
                     {inviteMsg}
                   </Alert>
                 )}
+
+                {syncError && (
+                  <Alert severity="error" sx={{ py: 0.5 }}>Erro no sync: {syncError}</Alert>
+                )}
+
+                <Divider />
+                <DiagnosticsPanel userId={cloudUser?.userId} onShowToggle={() => setShowDiag(v => !v)} show={showDiag} />
               </>
             )}
           </CardContent>
@@ -309,6 +358,42 @@ export function SettingsPage() {
           </Button>
         </CardContent>
       </Card>
+    </Box>
+  )
+}
+
+function DiagnosticsPanel({ userId, onShowToggle, show }: { userId?: string; onShowToggle: () => void; show: boolean }) {
+  const txCount = useLiveQuery(() => db.transactions.count(), [], 0)
+  const txWithRealm = useLiveQuery(
+    () => db.transactions.toArray().then(txs => txs.filter((t: any) => !!t.realmId).length),
+    [], 0
+  )
+  const members = useLiveQuery(() => db.table('members').toArray().catch(() => []), [], [])
+  const memberMutations = useLiveQuery(() => db.table('$members_mutations').count().catch(() => -1), [], -1)
+  const txMutations = useLiveQuery(() => db.table('$transactions_mutations').count().catch(() => -1), [], -1)
+  const realms = useLiveQuery(() => db.table('realms').toArray().catch(() => []), [], [])
+  const syncState = cloudEnabled ? db.cloud.syncState.value : null
+
+  return (
+    <Box>
+      <Button size="small" color="inherit" sx={{ fontSize: 11, opacity: 0.5 }} onClick={onShowToggle}>
+        {show ? 'Ocultar diagnóstico' : 'Diagnóstico'}
+      </Button>
+      {show && (
+        <Box sx={{ mt: 1, p: 1.5, bgcolor: 'action.hover', borderRadius: 1, fontSize: 12, fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+          <div>userId: {userId ?? '—'}</div>
+          <div>syncState: {syncState ? `${syncState.status} / ${syncState.phase}` : '—'}{syncState?.error ? ` ERR:${syncState.error}` : ''}</div>
+          <div>transações: {txCount} ({txWithRealm} com realmId) | pending mutations: {txMutations}</div>
+          <div>members ({(members as any[]).length}) | pending mutations: {memberMutations}:</div>
+          {(members as any[]).map((m, i) => (
+            <div key={i}>  [{i}] userId={m.userId ?? '—'} email={m.email} accepted={m.accepted ? '✓' : '✗'}</div>
+          ))}
+          <div>realms ({(realms as any[]).length}):</div>
+          {(realms as any[]).map((r, i) => (
+            <div key={i}>  [{i}] realmId={r.realmId} owner={r.owner}</div>
+          ))}
+        </Box>
+      )}
     </Box>
   )
 }

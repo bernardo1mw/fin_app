@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState, useSyncExternalStore } from 'react'
+import { useLiveQuery } from 'dexie-react-hooks'
 import Dialog from '@mui/material/Dialog'
 import DialogTitle from '@mui/material/DialogTitle'
 import DialogContent from '@mui/material/DialogContent'
@@ -6,35 +7,51 @@ import DialogActions from '@mui/material/DialogActions'
 import Button from '@mui/material/Button'
 import Typography from '@mui/material/Typography'
 import CircularProgress from '@mui/material/CircularProgress'
-import Box from '@mui/material/Box'
 import { db, cloudEnabled } from '@/db/db'
 
-interface Invite {
-  id: string
-  email?: string
-  realmId: string
-  realm?: { name?: string }
-  accept: () => Promise<void>
-  reject: () => Promise<void>
+function useCurrentUserEmail(): string | undefined {
+  return useSyncExternalStore(
+    (cb) => {
+      if (!cloudEnabled) return () => {}
+      const sub = db.cloud.currentUser.subscribe(cb)
+      return () => sub.unsubscribe()
+    },
+    () => cloudEnabled ? (db.cloud.currentUser.value?.email ?? undefined) : undefined,
+  )
 }
 
 export function PendingInvitesDialog() {
-  const [invites, setInvites] = useState<Invite[]>([])
+  const email = useCurrentUserEmail()
   const [busy, setBusy] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (!cloudEnabled) return
-    const sub = db.cloud.invites.subscribe((list: Invite[]) => setInvites(list))
-    return () => sub.unsubscribe()
-  }, [])
+  // Full scan — compound index [email+realmId] prevents simple where({email})
+  const invites = useLiveQuery(async () => {
+    if (!email) return []
+    const all = await db.table('members').toArray()
+    return all.filter((m: any) =>
+      m.email?.toLowerCase() === email.toLowerCase() && !m.accepted && !m.rejected
+    )
+  }, [email]) ?? []
 
   const current = invites[0] ?? null
 
-  async function handle(invite: Invite, action: 'accept' | 'reject') {
-    setBusy(action)
+  async function handleAccept() {
+    if (!current) return
+    setBusy('accept')
     try {
-      await invite[action]()
-      if (action === 'accept') await db.cloud.sync().catch(() => {})
+      await db.table('members').update(current.id, { accepted: new Date() })
+      await db.cloud.sync().catch(() => {})
+      await db.cloud.sync().catch(() => {})
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function handleReject() {
+    if (!current) return
+    setBusy('reject')
+    try {
+      await db.table('members').update(current.id, { rejected: new Date() })
     } finally {
       setBusy(null)
     }
@@ -52,17 +69,17 @@ export function PendingInvitesDialog() {
               Você foi convidado para acessar os dados financeiros de{' '}
               <strong>{realmLabel}</strong>.
             </Typography>
-            <Box sx={{ mt: 1 }}>
-              <Typography variant="caption" color="text.secondary">
-                {invites.length > 1 && `${invites.length} convites pendentes`}
+            {invites.length > 1 && (
+              <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                {invites.length} convites pendentes no total.
               </Typography>
-            </Box>
+            )}
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 2, gap: 1 }}>
             <Button
               color="inherit"
               disabled={!!busy}
-              onClick={() => handle(current, 'reject')}
+              onClick={handleReject}
               startIcon={busy === 'reject' ? <CircularProgress size={14} /> : undefined}
             >
               Recusar
@@ -70,7 +87,7 @@ export function PendingInvitesDialog() {
             <Button
               variant="contained"
               disabled={!!busy}
-              onClick={() => handle(current, 'accept')}
+              onClick={handleAccept}
               startIcon={busy === 'accept' ? <CircularProgress size={14} color="inherit" /> : undefined}
             >
               Aceitar
