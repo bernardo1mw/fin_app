@@ -14,11 +14,18 @@ export function useDashboardData() {
 
     const map: Record<string, { name: string; value: number; color: string }> = {}
     for (const tx of txs) {
-      if (tx.amount >= 0 || !tx.categoryId) continue
-      const cat = catMap[tx.categoryId]
-      if (!cat) continue
-      if (!map[tx.categoryId]) map[tx.categoryId] = { name: cat.name, value: 0, color: cat.color }
-      map[tx.categoryId].value += Math.abs(tx.amount)
+      if (tx.amount >= 0) continue
+      const key = tx.categoryId ?? '__none__'
+      if (!map[key]) {
+        if (tx.categoryId) {
+          const cat = catMap[tx.categoryId]
+          if (!cat) continue
+          map[key] = { name: cat.name, value: 0, color: cat.color }
+        } else {
+          map[key] = { name: 'Sem categoria', value: 0, color: '#9e9e9e' }
+        }
+      }
+      map[key].value += Math.abs(tx.amount)
     }
     return Object.values(map).sort((a, b) => b.value - a.value)
   })
