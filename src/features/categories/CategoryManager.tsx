@@ -25,7 +25,17 @@ import type { Category } from '@/db/schema'
 const TYPE_LABELS = { income: 'Renda', expense: 'Despesa', transfer: 'Transferência' }
 
 export function CategoryManager() {
-  const categories = useLiveQuery(() => db.categories.toArray())
+  const categories = useLiveQuery(async () => {
+    const all = await db.categories.toArray()
+    const byName = new Map<string, typeof all[number]>()
+    for (const c of all) {
+      const existing = byName.get(c.name)
+      if (!existing || (c.id?.startsWith('cat-') && !existing.id?.startsWith('cat-'))) {
+        byName.set(c.name, c)
+      }
+    }
+    return Array.from(byName.values())
+  })
   const [editing, setEditing] = useState<Category | null>(null)
   const [creating, setCreating] = useState(false)
   const [confirming, setConfirming] = useState(false)

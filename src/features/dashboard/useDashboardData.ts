@@ -62,7 +62,7 @@ export function useDashboardData() {
     const txs = await db.transactions.where('date').between(start, end).toArray()
     const income = txs.filter(t => t.amount > 0).reduce((s, t) => s + t.amount, 0)
     const expenses = txs.filter(t => t.amount < 0).reduce((s, t) => s + Math.abs(t.amount), 0)
-    const uncategorized = txs.filter(t => t.categoryId === null && t.amount < 0).length
+    const uncategorized = txs.filter(t => t.categoryId === null).length
     return { income, expenses, balance: income - expenses, uncategorized }
   })
 

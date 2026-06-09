@@ -33,7 +33,17 @@ export function useTransactions(filter?: TransactionFilter) {
     filter?.payeeSearch, filter?.amountMin, filter?.amountMax,
   ])
 
-  const categories = useLiveQuery(() => db.categories.toArray())
+  const categories = useLiveQuery(async () => {
+    const all = await db.categories.toArray()
+    const byName = new Map<string, typeof all[number]>()
+    for (const c of all) {
+      const existing = byName.get(c.name)
+      if (!existing || (c.id?.startsWith('cat-') && !existing.id?.startsWith('cat-'))) {
+        byName.set(c.name, c)
+      }
+    }
+    return Array.from(byName.values())
+  })
   const accounts = useLiveQuery(() => db.accounts.toArray())
 
   async function countSamePayee(tx: Transaction): Promise<number> {

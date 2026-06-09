@@ -159,7 +159,7 @@ export function TransactionList() {
         <Paper variant="outlined" sx={{ p: 2 }}>
           <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'flex-end' }}>
             <TextField
-              label="Payee"
+              label="Descrição"
               size="small"
               value={filters.payeeSearch ?? ''}
               onChange={e => setFilters(f => ({ ...f, payeeSearch: e.target.value || undefined }))}

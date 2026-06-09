@@ -98,7 +98,7 @@ export function AddTransactionDialog({ open, onClose }: Props) {
           slotProps={{ inputLabel: { shrink: true } }}
         />
         <TextField
-          label="Descrição (payee)"
+          label="Descrição"
           size="small"
           fullWidth
           value={payee}
