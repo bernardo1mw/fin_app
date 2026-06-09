@@ -28,6 +28,7 @@ import DialogActions from '@mui/material/DialogActions'
 import Collapse from '@mui/material/Collapse'
 import Tooltip from '@mui/material/Tooltip'
 import CircularProgress from '@mui/material/CircularProgress'
+import TablePagination from '@mui/material/TablePagination'
 import { Filter, Plus, Trash2, X } from 'lucide-react'
 import { CategoryPicker } from './CategoryPicker'
 import { useTransactions } from './useTransactions'
@@ -51,6 +52,13 @@ export function TransactionList() {
   const [pending, setPending] = useState<PendingChange | null>(null)
   const [showAdd, setShowAdd] = useState(false)
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false)
+  const [page, setPage] = useState(0)
+  const [rowsPerPage, setRowsPerPage] = useState(25)
+
+  function updateFilters(updater: (f: TransactionFilter) => TransactionFilter) {
+    setFilters(updater)
+    setPage(0)
+  }
 
   const { transactions, categories, accounts, setCategory, setCategoryAllByPayee, setCategoryBulk, countSamePayee, deleteTransaction, deleteTransactionsBulk } =
     useTransactions(filters)
@@ -113,6 +121,7 @@ export function TransactionList() {
 
   function clearFilters() {
     setFilters(EMPTY_FILTERS)
+    setPage(0)
   }
 
   const hasFilters = Object.keys(filters).some(k => filters[k as keyof TransactionFilter] !== undefined)
@@ -162,7 +171,7 @@ export function TransactionList() {
               label="Descrição"
               size="small"
               value={filters.payeeSearch ?? ''}
-              onChange={e => setFilters(f => ({ ...f, payeeSearch: e.target.value || undefined }))}
+              onChange={e => updateFilters(f => ({ ...f, payeeSearch: e.target.value || undefined }))}
               sx={{ minWidth: 160 }}
               placeholder="Buscar por descrição"
             />
@@ -171,7 +180,7 @@ export function TransactionList() {
               type="date"
               size="small"
               value={filters.dateFrom ? format(filters.dateFrom, 'yyyy-MM-dd') : ''}
-              onChange={e => setFilters(f => ({ ...f, dateFrom: e.target.value ? new Date(e.target.value + 'T00:00:00') : undefined }))}
+              onChange={e => updateFilters(f => ({ ...f, dateFrom: e.target.value ? new Date(e.target.value + 'T00:00:00') : undefined }))}
               slotProps={{ inputLabel: { shrink: true } }}
               sx={{ minWidth: 140 }}
             />
@@ -180,7 +189,7 @@ export function TransactionList() {
               type="date"
               size="small"
               value={filters.dateTo ? format(filters.dateTo, 'yyyy-MM-dd') : ''}
-              onChange={e => setFilters(f => ({ ...f, dateTo: e.target.value ? new Date(e.target.value + 'T23:59:59') : undefined }))}
+              onChange={e => updateFilters(f => ({ ...f, dateTo: e.target.value ? new Date(e.target.value + 'T23:59:59') : undefined }))}
               slotProps={{ inputLabel: { shrink: true } }}
               sx={{ minWidth: 140 }}
             />
@@ -190,7 +199,7 @@ export function TransactionList() {
                 label="Tipo"
                 value={filters.type ?? ''}
                 onChange={(e: SelectChangeEvent<string>) =>
-                  setFilters(f => ({ ...f, type: (e.target.value as 'income' | 'expense') || undefined }))
+                  updateFilters(f => ({ ...f, type: (e.target.value as 'income' | 'expense') || undefined }))
                 }
               >
                 <MenuItem value=""><em>Todos</em></MenuItem>
@@ -204,7 +213,7 @@ export function TransactionList() {
                 label="Categoria"
                 value={filters.categoryId ?? ''}
                 onChange={(e: SelectChangeEvent<string>) =>
-                  setFilters(f => ({ ...f, categoryId: e.target.value || undefined }))
+                  updateFilters(f => ({ ...f, categoryId: e.target.value || undefined }))
                 }
               >
                 <MenuItem value=""><em>Todas</em></MenuItem>
@@ -220,7 +229,7 @@ export function TransactionList() {
                   label="Conta"
                   value={filters.accountId ?? ''}
                   onChange={(e: SelectChangeEvent<string>) =>
-                    setFilters(f => ({ ...f, accountId: e.target.value || undefined }))
+                    updateFilters(f => ({ ...f, accountId: e.target.value || undefined }))
                   }
                 >
                   <MenuItem value=""><em>Todas</em></MenuItem>
@@ -235,7 +244,7 @@ export function TransactionList() {
               size="small"
               type="number"
               value={filters.amountMin ?? ''}
-              onChange={e => setFilters(f => ({ ...f, amountMin: e.target.value ? Number(e.target.value) : undefined }))}
+              onChange={e => updateFilters(f => ({ ...f, amountMin: e.target.value ? Number(e.target.value) : undefined }))}
               sx={{ minWidth: 110 }}
               slotProps={{ htmlInput: { min: 0, step: 0.01 } }}
             />
@@ -244,7 +253,7 @@ export function TransactionList() {
               size="small"
               type="number"
               value={filters.amountMax ?? ''}
-              onChange={e => setFilters(f => ({ ...f, amountMax: e.target.value ? Number(e.target.value) : undefined }))}
+              onChange={e => updateFilters(f => ({ ...f, amountMax: e.target.value ? Number(e.target.value) : undefined }))}
               sx={{ minWidth: 110 }}
               slotProps={{ htmlInput: { min: 0, step: 0.01 } }}
             />
@@ -326,7 +335,7 @@ export function TransactionList() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {transactions.map(tx => {
+              {transactions.slice(page * rowsPerPage, (page + 1) * rowsPerPage).map(tx => {
                 const isRowIncome = tx.amount > 0
                 const catColor = tx.categoryId
                   ? categories.find(c => c.id === tx.categoryId)?.color
@@ -402,6 +411,17 @@ export function TransactionList() {
               })}
             </TableBody>
           </Table>
+          <TablePagination
+            component="div"
+            count={transactions.length}
+            page={page}
+            onPageChange={(_, p) => setPage(p)}
+            rowsPerPage={rowsPerPage}
+            onRowsPerPageChange={e => { setRowsPerPage(parseInt(e.target.value)); setPage(0) }}
+            rowsPerPageOptions={[25, 50, 100]}
+            labelRowsPerPage="Por página:"
+            labelDisplayedRows={({ from, to, count }) => `${from}–${to} de ${count}`}
+          />
         </TableContainer>
       )}
 
