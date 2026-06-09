@@ -40,8 +40,8 @@ export function PendingInvitesDialog() {
     setBusy('accept')
     try {
       await db.table('members').update(current.id, { accepted: new Date() })
-      await db.cloud.sync().catch(() => {})
-      await db.cloud.sync().catch(() => {})
+      await (db.cloud.sync as any)({ force: true }).catch(() => {})
+      await (db.cloud.sync as any)({ force: true }).catch(() => {})
     } finally {
       setBusy(null)
     }

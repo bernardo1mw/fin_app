@@ -132,8 +132,9 @@ export function SettingsPage() {
     setSyncing(true)
     setSyncError('')
     try {
-      await db.cloud.sync()
-      await db.cloud.sync()
+      // force: true bypasses the "sync is needed" check so we always pull
+      await (db.cloud.sync as any)({ force: true })
+      await (db.cloud.sync as any)({ force: true })
     } catch (e) {
       setSyncError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -147,24 +148,27 @@ export function SettingsPage() {
     setInviteMsg('')
     try {
       const email = inviteEmail.trim().toLowerCase()
-      // Remove only pending (not yet accepted) invites for this email to allow re-inviting
-      const existing = await db.table('members').toArray()
-      const pendingToDelete = existing
-        .filter((m: any) => m.email === email && m.realmId === cloudUser.userId && !m.accepted && !m.rejected)
-        .map((m: any) => m.id)
-      if (pendingToDelete.length) await db.table('members').bulkDelete(pendingToDelete)
-
-      await db.table('members').add({
-        realmId: cloudUser.userId,
-        email,
-        name: email,
-        invite: true,
-        permissions: {
-          add: '*',
-          update: { '*': ['*'] },
-          manage: '*',
-        },
-      })
+      const all = await db.table('members').toArray()
+      const pendingInvite = all.find(
+        (m: any) => m.email === email && m.realmId === cloudUser.userId && !m.accepted && !m.rejected
+      )
+      if (pendingInvite) {
+        // Re-invite: update the existing record (no delete+add to avoid unique-index race)
+        await db.table('members').update(pendingInvite.id, { userId: email, invite: true })
+      } else {
+        await db.table('members').add({
+          realmId: cloudUser.userId,
+          userId: email,
+          email,
+          name: email,
+          invite: true,
+          permissions: {
+            add: '*',
+            update: { '*': ['*'] },
+            manage: '*',
+          },
+        })
+      }
       await db.cloud.sync()
       setInviteMsg(`Convite enviado para ${email}. Peça para a pessoa abrir o app e clicar em Sincronizar duas vezes.`)
       setInviteEmail('')
