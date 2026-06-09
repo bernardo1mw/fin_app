@@ -3,39 +3,34 @@ import { db } from '@/db/db'
 import { getSharedRealmId } from '@/db/sharedRealm'
 import { parseOFXBuffer } from './OFXParser'
 import { applyRules } from '@/features/categories/useCategorization'
-import type { TransactionSubtype } from '@/db/schema'
+import type { Transaction } from '@/db/schema'
 
-export interface ImportedRow {
-  fitId: string
-  date: Date
-  amount: number
-  payee: string
-  transactionSubtype: TransactionSubtype
-  currency: string
-  categoryId: string | null
+// Full transaction data minus DB-assigned fields — used for preview and import
+export type PreviewRow = Omit<Transaction, 'id' | 'accountId' | 'realmId'>
+
+export interface ParsedPreview {
+  accountId: string
+  realmId: string | undefined
+  newRows: PreviewRow[]
+  duplicateRows: PreviewRow[]
+  parseError?: string
 }
 
 export interface ImportResult {
   imported: number
-  duplicates: number
   categorized: number
   errors: string[]
-  importedRows: ImportedRow[]
-  duplicateRows: ImportedRow[]
 }
 
 export function useImport() {
   const [loading, setLoading] = useState(false)
+  const [preview, setPreview] = useState<ParsedPreview | null>(null)
   const [result, setResult] = useState<ImportResult | null>(null)
 
-  async function importFile(file: File): Promise<ImportResult> {
+  async function parseFile(file: File): Promise<ParsedPreview | null> {
     setLoading(true)
+    setPreview(null)
     setResult(null)
-    const res: ImportResult = {
-      imported: 0, duplicates: 0, categorized: 0,
-      errors: [], importedRows: [], duplicateRows: [],
-    }
-
     try {
       const buffer = await file.arrayBuffer()
       const parsed = parseOFXBuffer(buffer)
@@ -57,46 +52,59 @@ export function useImport() {
       }
 
       const existingFitIds = new Set(
-        (await db.transactions.where('accountId').equals(accountId).toArray())
-          .map(t => t.fitId)
+        (await db.transactions.where('accountId').equals(accountId).toArray()).map(t => t.fitId)
       )
 
-      await db.transaction('rw', [db.transactions, db.categoryRules], async () => {
-        for (const tx of parsed.transactions) {
-          const row: ImportedRow = {
-            fitId: tx.fitId,
-            date: tx.date,
-            amount: tx.amount,
-            payee: tx.payee,
-            transactionSubtype: tx.transactionSubtype,
-            currency: tx.currency,
-            categoryId: null,
-          }
+      const newRows: PreviewRow[] = []
+      const duplicateRows: PreviewRow[] = []
 
-          if (existingFitIds.has(tx.fitId)) {
-            res.duplicates++
-            res.duplicateRows.push(row)
-            continue
-          }
-
+      for (const tx of parsed.transactions) {
+        if (existingFitIds.has(tx.fitId)) {
+          duplicateRows.push({ ...tx, categoryId: null })
+        } else {
           const categoryId = await applyRules(tx)
-          row.categoryId = categoryId
-          if (categoryId !== null) res.categorized++
-
-          await db.transactions.add({ ...tx, id: crypto.randomUUID(), accountId, categoryId, realmId })
-          existingFitIds.add(tx.fitId)
-          res.imported++
-          res.importedRows.push(row)
+          newRows.push({ ...tx, categoryId })
         }
-      })
+      }
+
+      const p: ParsedPreview = { accountId, realmId, newRows, duplicateRows }
+      setPreview(p)
+      return p
+    } catch (e) {
+      const parseError = e instanceof Error ? e.message : String(e)
+      const p: ParsedPreview = { accountId: '', realmId: undefined, newRows: [], duplicateRows: [], parseError }
+      setPreview(p)
+      return p
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function confirmImport(p: ParsedPreview, selectedFitIds: Set<string>): Promise<ImportResult> {
+    setLoading(true)
+    const res: ImportResult = { imported: 0, categorized: 0, errors: [] }
+    try {
+      const rows = p.newRows.filter(r => selectedFitIds.has(r.fitId))
+      await db.transactions.bulkAdd(
+        rows.map(row => ({
+          ...row,
+          id: crypto.randomUUID(),
+          accountId: p.accountId,
+          realmId: p.realmId,
+        }))
+      )
+      res.imported = rows.length
+      res.categorized = rows.filter(r => r.categoryId !== null).length
+      setPreview(null)
+      setResult(res)
     } catch (e) {
       res.errors.push(e instanceof Error ? e.message : String(e))
+      setResult(res)
+    } finally {
+      setLoading(false)
     }
-
-    setLoading(false)
-    setResult(res)
     return res
   }
 
-  return { importFile, loading, result }
+  return { parseFile, confirmImport, loading, preview, result }
 }
