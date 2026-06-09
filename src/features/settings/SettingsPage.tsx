@@ -133,10 +133,9 @@ export function SettingsPage() {
     setSyncing(true)
     setSyncError('')
     try {
-      // purpose:'pull' bypasses the "isSyncNeeded" check and always pulls from server.
-      // Two pulls needed: first discovers inviteRealms, second downloads data from them.
-      await db.cloud.sync({ purpose: 'pull', wait: true })
-      await db.cloud.sync({ purpose: 'pull', wait: true })
+      await db.cloud.sync() // push any pending local mutations first
+      await db.cloud.sync({ purpose: 'pull', wait: true }) // pull new data (discovers invite realms)
+      await db.cloud.sync({ purpose: 'pull', wait: true }) // second pull downloads from new realms
     } catch (e) {
       setSyncError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -189,6 +188,7 @@ export function SettingsPage() {
           },
         })
       }
+      await db.cloud.sync() // push realm + member + migration mutations
       await db.cloud.sync({ purpose: 'pull', wait: true })
       setInviteMsg(`Convite enviado para ${email}.`)
       setInviteEmail('')
