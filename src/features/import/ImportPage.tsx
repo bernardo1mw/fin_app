@@ -97,7 +97,7 @@ export function ImportPage() {
   }
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, maxWidth: 800, mx: 'auto' }}>
       <Typography variant="h5" sx={{ fontWeight: 700 }}>Importar OFX</Typography>
 
       <Card sx={{ maxWidth: 640 }}>

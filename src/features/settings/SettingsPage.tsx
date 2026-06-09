@@ -253,7 +253,7 @@ export function SettingsPage() {
   }
 
   return (
-    <Box sx={{ maxWidth: 520, display: 'flex', flexDirection: 'column', gap: 3 }}>
+    <Box sx={{ maxWidth: 520, mx: 'auto', display: 'flex', flexDirection: 'column', gap: 3 }}>
       <Typography variant="h5" sx={{ fontWeight: 700 }}>Configurações</Typography>
 
       {savedMsg && <Alert severity="success" sx={{ py: 0.5 }}>{savedMsg}</Alert>}

@@ -55,5 +55,13 @@ export function useTransactions(filter?: TransactionFilter) {
     await db.transactions.where(':id').anyOf(ids).modify({ categoryId })
   }
 
-  return { transactions, categories, accounts, setCategory, setCategoryAllByPayee, setCategoryBulk, countSamePayee }
+  async function deleteTransaction(id: string) {
+    await db.transactions.delete(id)
+  }
+
+  async function deleteTransactionsBulk(ids: string[]) {
+    await db.transactions.bulkDelete(ids)
+  }
+
+  return { transactions, categories, accounts, setCategory, setCategoryAllByPayee, setCategoryBulk, countSamePayee, deleteTransaction, deleteTransactionsBulk }
 }

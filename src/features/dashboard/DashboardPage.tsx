@@ -2,7 +2,7 @@ import { TrendingUp, TrendingDown, Wallet, AlertCircle } from 'lucide-react'
 import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend,
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  LineChart, Line,
+  LineChart, Line, LabelList,
 } from 'recharts'
 import Box from '@mui/material/Box'
 import Card from '@mui/material/Card'
@@ -12,6 +12,11 @@ import Paper from '@mui/material/Paper'
 import { useDashboardData } from './useDashboardData'
 
 const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
+const fmtShort = (v: number) => {
+  const abs = Math.abs(v)
+  if (abs >= 1000) return `R$${(v / 1000).toFixed(1)}k`
+  return `R$${v.toFixed(0)}`
+}
 
 export function DashboardPage() {
   const { spendingByCategory, monthlyCashFlow, netWorthPoints, summary } = useDashboardData()
@@ -48,7 +53,16 @@ export function DashboardPage() {
               : (
                 <ResponsiveContainer width="100%" height={260}>
                   <PieChart>
-                    <Pie data={spendingByCategory} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90}>
+                    <Pie
+                      data={spendingByCategory}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={80}
+                      label={({ name, value }) => `${(name as string).split(' ')[0]} ${fmtShort(value as number)}`}
+                      labelLine
+                    >
                       {spendingByCategory.map((entry, i) => <Cell key={i} fill={entry.color} />)}
                     </Pie>
                     <Tooltip formatter={(v) => fmt(Number(v ?? 0))} />
@@ -73,8 +87,12 @@ export function DashboardPage() {
                     <YAxis tick={{ fontSize: 11 }} tickFormatter={(v: number) => `R$${(v / 1000).toFixed(0)}k`} />
                     <Tooltip formatter={(v) => fmt(Number(v ?? 0))} />
                     <Legend />
-                    <Bar dataKey="income" name="Receita" fill="#22c55e" radius={[3, 3, 0, 0]} />
-                    <Bar dataKey="expenses" name="Despesa" fill="#f97316" radius={[3, 3, 0, 0]} />
+                    <Bar dataKey="income" name="Receita" fill="#22c55e" radius={[3, 3, 0, 0]}>
+                      <LabelList dataKey="income" position="top" formatter={(v: number) => v > 0 ? fmtShort(v) : ''} style={{ fontSize: 10, fill: '#666' }} />
+                    </Bar>
+                    <Bar dataKey="expenses" name="Despesa" fill="#f97316" radius={[3, 3, 0, 0]}>
+                      <LabelList dataKey="expenses" position="top" formatter={(v: number) => v > 0 ? fmtShort(v) : ''} style={{ fontSize: 10, fill: '#666' }} />
+                    </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               )
@@ -94,7 +112,9 @@ export function DashboardPage() {
                     <XAxis dataKey="label" tick={{ fontSize: 11 }} />
                     <YAxis tick={{ fontSize: 11 }} tickFormatter={(v: number) => `R$${(v / 1000).toFixed(0)}k`} />
                     <Tooltip formatter={(v) => fmt(Number(v ?? 0))} />
-                    <Line type="monotone" dataKey="balance" name="Saldo" stroke="#3b82f6" strokeWidth={2} dot={{ r: 4 }} />
+                    <Line type="monotone" dataKey="balance" name="Saldo" stroke="#3b82f6" strokeWidth={2} dot={{ r: 4 }}>
+                      <LabelList dataKey="balance" position="top" formatter={(v: number) => fmtShort(v)} style={{ fontSize: 10, fill: '#3b82f6' }} />
+                    </Line>
                   </LineChart>
                 </ResponsiveContainer>
               )

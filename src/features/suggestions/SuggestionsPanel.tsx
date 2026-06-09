@@ -37,7 +37,7 @@ export function SuggestionsPanel() {
   }
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, maxWidth: 680 }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, maxWidth: 680, mx: 'auto' }}>
       <Typography variant="h5" sx={{ fontWeight: 700 }}>Sugestões</Typography>
 
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>

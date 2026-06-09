@@ -40,7 +40,7 @@ export function CategoryManager() {
   }
 
   return (
-    <Box sx={{ maxWidth: 560, display: 'flex', flexDirection: 'column', gap: 2 }}>
+    <Box sx={{ maxWidth: 560, mx: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
         <Typography variant="h5" sx={{ fontWeight: 700 }}>Categorias</Typography>
         <Box sx={{ display: 'flex', gap: 1 }}>

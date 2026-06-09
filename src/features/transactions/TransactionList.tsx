@@ -28,7 +28,7 @@ import DialogActions from '@mui/material/DialogActions'
 import Collapse from '@mui/material/Collapse'
 import Tooltip from '@mui/material/Tooltip'
 import CircularProgress from '@mui/material/CircularProgress'
-import { Filter, Plus, X } from 'lucide-react'
+import { Filter, Plus, Trash2, X } from 'lucide-react'
 import { CategoryPicker } from './CategoryPicker'
 import { useTransactions } from './useTransactions'
 import type { TransactionFilter } from './useTransactions'
@@ -50,8 +50,9 @@ export function TransactionList() {
   const [bulkCategoryId, setBulkCategoryId] = useState<string>('')
   const [pending, setPending] = useState<PendingChange | null>(null)
   const [showAdd, setShowAdd] = useState(false)
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false)
 
-  const { transactions, categories, accounts, setCategory, setCategoryAllByPayee, setCategoryBulk, countSamePayee } =
+  const { transactions, categories, accounts, setCategory, setCategoryAllByPayee, setCategoryBulk, countSamePayee, deleteTransaction, deleteTransactionsBulk } =
     useTransactions(filters)
 
   const allIds = (transactions ?? []).map(t => t.id!)
@@ -100,6 +101,12 @@ export function TransactionList() {
     await setCategoryBulk(Array.from(selected), bulkCategoryId)
     setSelected(new Set())
     setBulkCategoryId('')
+  }
+
+  async function handleBulkDelete() {
+    await deleteTransactionsBulk(Array.from(selected))
+    setSelected(new Set())
+    setConfirmBulkDelete(false)
   }
 
   function clearFilters() {
@@ -262,6 +269,15 @@ export function TransactionList() {
             >
               Aplicar
             </Button>
+            <Button
+              size="small"
+              color="error"
+              variant="outlined"
+              startIcon={<Trash2 size={14} />}
+              onClick={() => setConfirmBulkDelete(true)}
+            >
+              Excluir
+            </Button>
             <Button size="small" color="inherit" onClick={() => setSelected(new Set())}>
               Cancelar
             </Button>
@@ -290,6 +306,7 @@ export function TransactionList() {
                 <TableCell sx={{ color: 'text.secondary', fontWeight: 500 }}>Descrição</TableCell>
                 <TableCell align="right" sx={{ color: 'text.secondary', fontWeight: 500 }}>Valor</TableCell>
                 <TableCell sx={{ color: 'text.secondary', fontWeight: 500 }}>Categoria</TableCell>
+                <TableCell sx={{ width: 40 }} />
               </TableRow>
             </TableHead>
             <TableBody>
@@ -353,6 +370,17 @@ export function TransactionList() {
                         onChange={catId => handleCategoryChange(tx, catId)}
                       />
                     </TableCell>
+                    <TableCell padding="none" onClick={e => e.stopPropagation()} sx={{ width: 40 }}>
+                      <Tooltip title="Excluir">
+                        <IconButton
+                          size="small"
+                          onClick={() => deleteTransaction(tx.id!)}
+                          sx={{ color: 'text.disabled', '&:hover': { color: 'error.main' } }}
+                        >
+                          <Trash2 size={14} />
+                        </IconButton>
+                      </Tooltip>
+                    </TableCell>
                   </TableRow>
                 )
               })}
@@ -378,6 +406,20 @@ export function TransactionList() {
           <Button variant="contained" onClick={applyAll} fullWidth>
             Todas as {(pending?.samePayeeCount ?? 0) + 1} transações
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={confirmBulkDelete} onClose={() => setConfirmBulkDelete(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Excluir transações</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary">
+            Excluir <strong>{selectedCount}</strong> transaç{selectedCount !== 1 ? 'ões' : 'ão'} permanentemente?
+            Essa ação não pode ser desfeita.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmBulkDelete(false)}>Cancelar</Button>
+          <Button variant="contained" color="error" onClick={handleBulkDelete}>Excluir</Button>
         </DialogActions>
       </Dialog>
 

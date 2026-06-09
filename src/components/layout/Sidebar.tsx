@@ -139,7 +139,10 @@ export function Sidebar({ open, onToggle }: Props) {
           variant="persistent"
           open={open}
           sx={{
+            width: open ? DRAWER_WIDTH : 0,
             flexShrink: 0,
+            overflow: 'hidden',
+            transition: theme => theme.transitions.create('width'),
             '& .MuiDrawer-paper': {
               width: DRAWER_WIDTH,
               boxSizing: 'border-box',
