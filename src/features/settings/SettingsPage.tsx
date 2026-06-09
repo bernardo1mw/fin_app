@@ -1,4 +1,4 @@
-import { useState, useEffect, useSyncExternalStore } from 'react'
+import { useState, useSyncExternalStore } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { Download, Eye, EyeOff, Save, Cloud, CloudOff, LogIn, LogOut, UserPlus, RefreshCw } from 'lucide-react'
 import type { SelectChangeEvent } from '@mui/material/Select'
@@ -20,7 +20,25 @@ import Alert from '@mui/material/Alert'
 import Divider from '@mui/material/Divider'
 import Chip from '@mui/material/Chip'
 import CircularProgress from '@mui/material/CircularProgress'
-import type { UserProfile } from '@/db/schema'
+import type { UserProfile, Transaction, Category, CategoryRule, Account } from '@/db/schema'
+
+interface CloudMember {
+  id?: string
+  realmId: string
+  userId?: string
+  email?: string
+  name?: string
+  invite?: boolean
+  accepted?: boolean
+  rejected?: boolean
+  permissions?: Record<string, unknown>
+}
+
+interface CloudRealm {
+  realmId?: string
+  owner?: string
+  name?: string
+}
 
 function useSyncState() {
   return useSyncExternalStore(
@@ -64,27 +82,27 @@ export function SettingsPage() {
   const profile = useLiveQuery(() => db.userProfile.get(1))
   const [apiKey, setApiKey] = useState(localStorage.getItem('anthropic_api_key') ?? '')
   const [showKey, setShowKey] = useState(false)
-  const [income, setIncome] = useState('')
-  const [savingsPct, setSavingsPct] = useState('')
-  const [riskProfile, setRiskProfile] = useState<UserProfile['riskProfile']>('moderado')
+  type ProfileDraft = { income: string; savingsPct: string; riskProfile: UserProfile['riskProfile'] }
+  const [draft, setDraft] = useState<Partial<ProfileDraft>>({})
+  const income = draft.income ?? (profile && profile.monthlyIncome > 0 ? String(profile.monthlyIncome) : '')
+  const savingsPct = draft.savingsPct ?? String(profile?.savingsGoalPct ?? 20)
+  const riskProfile = draft.riskProfile ?? profile?.riskProfile ?? 'moderado'
+  const setIncome = (v: string) => setDraft(d => ({ ...d, income: v }))
+  const setSavingsPct = (v: string) => setDraft(d => ({ ...d, savingsPct: v }))
+  const setRiskProfile = (v: UserProfile['riskProfile']) => setDraft(d => ({ ...d, riskProfile: v }))
+
   const [savedMsg, setSavedMsg] = useState('')
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviting, setInviting] = useState(false)
   const [inviteMsg, setInviteMsg] = useState('')
   const [syncing, setSyncing] = useState(false)
   const [syncError, setSyncError] = useState('')
+  const [migrating, setMigrating] = useState(false)
+  const [migrateMsg, setMigrateMsg] = useState('')
   const [showDiag, setShowDiag] = useState(false)
 
   const cloudUser = useCloudUser()
   const isLoggedIn = cloudUser?.isLoggedIn ?? false
-
-  useEffect(() => {
-    if (profile) {
-      setIncome(profile.monthlyIncome > 0 ? String(profile.monthlyIncome) : '')
-      setSavingsPct(String(profile.savingsGoalPct))
-      setRiskProfile(profile.riskProfile)
-    }
-  }, [profile])
 
   function flash(msg: string) {
     setSavedMsg(msg)
@@ -104,6 +122,7 @@ export function SettingsPage() {
       savingsGoalPct: parseFloat(savingsPct) || 20,
       riskProfile,
     })
+    setDraft({})
     flash('Perfil salvo!')
   }
 
@@ -143,6 +162,53 @@ export function SettingsPage() {
     }
   }
 
+  async function migrateDataToSharedRealm(sharedRealmId: string) {
+    // delete+add is required because modify() only updates the data blob field,
+    // it does NOT move the object to a different realm on the Dexie Cloud server.
+    await db.transaction('rw', [db.transactions, db.categories, db.categoryRules, db.accounts], async () => {
+      const [txs, cats, rules, accs] = await Promise.all([
+        db.transactions.filter((t: Transaction) => t.realmId !== sharedRealmId).toArray(),
+        db.categories.filter((c: Category) => c.realmId !== sharedRealmId).toArray(),
+        db.categoryRules.filter((r: CategoryRule) => r.realmId !== sharedRealmId).toArray(),
+        db.accounts.filter((a: Account) => a.realmId !== sharedRealmId).toArray(),
+      ])
+      if (txs.length) {
+        await db.transactions.bulkDelete(txs.map(t => t.id!))
+        await db.transactions.bulkAdd(txs.map(t => ({ ...t, realmId: sharedRealmId })))
+      }
+      if (cats.length) {
+        await db.categories.bulkDelete(cats.map(c => c.id!))
+        await db.categories.bulkAdd(cats.map(c => ({ ...c, realmId: sharedRealmId })))
+      }
+      if (rules.length) {
+        await db.categoryRules.bulkDelete(rules.map(r => r.id!))
+        await db.categoryRules.bulkAdd(rules.map(r => ({ ...r, realmId: sharedRealmId })))
+      }
+      if (accs.length) {
+        await db.accounts.bulkDelete(accs.map(a => a.id!))
+        await db.accounts.bulkAdd(accs.map(a => ({ ...a, realmId: sharedRealmId })))
+      }
+    })
+  }
+
+  async function handleMigrateExisting() {
+    if (!cloudUser?.userId) return
+    const sharedRealmId = getSharedRealmId(cloudUser.userId)
+    if (!sharedRealmId) return
+    setMigrating(true)
+    setMigrateMsg('')
+    try {
+      await migrateDataToSharedRealm(sharedRealmId)
+      await db.cloud.sync()
+      await db.cloud.sync({ purpose: 'pull', wait: true })
+      setMigrateMsg('Dados migrados e sincronizados!')
+    } catch (e: unknown) {
+      setMigrateMsg(`Erro: ${e instanceof Error ? e.message : 'tente novamente'}`)
+    } finally {
+      setMigrating(false)
+    }
+  }
+
   async function handleInvite() {
     if (!inviteEmail.trim() || !cloudUser?.userId) return
     setInviting(true)
@@ -150,47 +216,34 @@ export function SettingsPage() {
     try {
       const email = inviteEmail.trim().toLowerCase()
 
-      // Get or create an explicit shared realm (rlm-XXX ID).
-      // The private realm (realmId = email) has no realms table record, so Dexie Cloud
-      // never adds it to the invitee's realm set after acceptance. An explicit realm
-      // created via add() gets an rlm-XXX ID with a server-side realms record.
       let sharedRealmId = getSharedRealmId(cloudUser.userId)
       if (!sharedRealmId) {
         sharedRealmId = await db.table('realms').add({
           name: cloudUser.email || cloudUser.userId,
         }) as string
         setSharedRealmId(cloudUser.userId, sharedRealmId)
-
-        // Migrate all existing data into the shared realm
-        await db.transactions.toCollection().modify({ realmId: sharedRealmId })
-        await db.categories.toCollection().modify({ realmId: sharedRealmId })
-        await db.categoryRules.toCollection().modify({ realmId: sharedRealmId })
-        await db.accounts.toCollection().modify({ realmId: sharedRealmId })
       }
 
-      const all = await db.table('members').toArray()
-      const pendingInvite = all.find(
-        (m: any) => m.email === email && m.realmId === sharedRealmId && !m.accepted && !m.rejected
-      )
+      // Always migrate data not yet in the shared realm (delete+add moves it on server)
+      await migrateDataToSharedRealm(sharedRealmId)
 
-      if (pendingInvite) {
-        await db.table('members').update(pendingInvite.id, { invite: true })
-      } else {
+      const all: CloudMember[] = await db.table('members').toArray()
+      const existingMember = all.find(
+        (m) => m.email === email && m.realmId === sharedRealmId
+      )
+      if (!existingMember) {
         await db.table('members').add({
           realmId: sharedRealmId,
           email,
           name: email,
           invite: true,
-          permissions: {
-            add: '*',
-            update: { '*': ['*'] },
-            manage: '*',
-          },
+          permissions: { add: '*', update: { '*': ['*'] }, manage: '*' },
         })
       }
-      await db.cloud.sync() // push realm + member + migration mutations
+
+      await db.cloud.sync()
       await db.cloud.sync({ purpose: 'pull', wait: true })
-      setInviteMsg(`Convite enviado para ${email}.`)
+      setInviteMsg(existingMember ? `${email} já é membro — dados re-migrados e sincronizados.` : `Convite enviado para ${email}.`)
       setInviteEmail('')
     } catch (e: unknown) {
       setInviteMsg(`Erro: ${e instanceof Error ? e.message : 'tente novamente'}`)
@@ -245,6 +298,32 @@ export function SettingsPage() {
                     Sair
                   </Button>
                 </Box>
+
+                <Divider />
+
+                {cloudUser?.userId && getSharedRealmId(cloudUser.userId) && (
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>Re-migrar dados para realm compartilhado</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Se os dados ainda não aparecem para a outra pessoa, clique aqui para forçar a migração.
+                    </Typography>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      startIcon={migrating ? <CircularProgress size={14} /> : <RefreshCw size={13} />}
+                      onClick={handleMigrateExisting}
+                      disabled={migrating}
+                      sx={{ alignSelf: 'flex-start', fontSize: 12 }}
+                    >
+                      {migrating ? 'Migrando...' : 'Migrar dados agora'}
+                    </Button>
+                    {migrateMsg && (
+                      <Alert severity={migrateMsg.startsWith('Erro') ? 'error' : 'success'} sx={{ py: 0.5 }}>
+                        {migrateMsg}
+                      </Alert>
+                    )}
+                  </Box>
+                )}
 
                 <Divider />
 
@@ -387,13 +466,13 @@ export function SettingsPage() {
 function DiagnosticsPanel({ userId, onShowToggle, show }: { userId?: string; onShowToggle: () => void; show: boolean }) {
   const txCount = useLiveQuery(() => db.transactions.count(), [], 0)
   const txWithRealm = useLiveQuery(
-    () => db.transactions.toArray().then(txs => txs.filter((t: any) => !!t.realmId).length),
+    () => db.transactions.toArray().then(txs => txs.filter(t => !!t.realmId).length),
     [], 0
   )
-  const members = useLiveQuery(() => db.table('members').toArray().catch(() => []), [], [])
-  const memberMutations = useLiveQuery(() => db.table('$members_mutations').count().catch(() => -1), [], -1)
-  const txMutations = useLiveQuery(() => db.table('$transactions_mutations').count().catch(() => -1), [], -1)
-  const realms = useLiveQuery(() => db.table('realms').toArray().catch(() => []), [], [])
+  const members = useLiveQuery<CloudMember[], CloudMember[]>(() => db.table('members').toArray().catch(() => []), [], [])
+  const memberMutations = useLiveQuery<number, number>(() => db.table('$members_mutations').count().catch(() => -1), [], -1)
+  const txMutations = useLiveQuery<number, number>(() => db.table('$transactions_mutations').count().catch(() => -1), [], -1)
+  const realms = useLiveQuery<CloudRealm[], CloudRealm[]>(() => db.table('realms').toArray().catch(() => []), [], [])
   const syncState = cloudEnabled ? db.cloud.syncState.value : null
 
   return (
@@ -406,12 +485,12 @@ function DiagnosticsPanel({ userId, onShowToggle, show }: { userId?: string; onS
           <div>userId: {userId ?? '—'}</div>
           <div>syncState: {syncState ? `${syncState.status} / ${syncState.phase}` : '—'}{syncState?.error ? ` ERR:${syncState.error}` : ''}</div>
           <div>transações: {txCount} ({txWithRealm} com realmId) | pending mutations: {txMutations}</div>
-          <div>members ({(members as any[]).length}) | pending mutations: {memberMutations}:</div>
-          {(members as any[]).map((m, i) => (
+          <div>members ({members.length}) | pending mutations: {memberMutations}:</div>
+          {members.map((m, i) => (
             <div key={i}>  [{i}] userId={m.userId ?? '—'} email={m.email} accepted={m.accepted ? '✓' : '✗'}</div>
           ))}
-          <div>realms ({(realms as any[]).length}):</div>
-          {(realms as any[]).map((r, i) => (
+          <div>realms ({realms.length}):</div>
+          {realms.map((r, i) => (
             <div key={i}>  [{i}] realmId={r.realmId} owner={r.owner}</div>
           ))}
         </Box>
