@@ -1,5 +1,6 @@
-import { useState, useSyncExternalStore } from 'react'
-import { useLiveQuery } from 'dexie-react-hooks'
+import { useState } from 'react'
+import { useObservable } from 'dexie-react-hooks'
+import { of } from 'rxjs'
 import Dialog from '@mui/material/Dialog'
 import DialogTitle from '@mui/material/DialogTitle'
 import DialogContent from '@mui/material/DialogContent'
@@ -9,29 +10,9 @@ import Typography from '@mui/material/Typography'
 import CircularProgress from '@mui/material/CircularProgress'
 import { db, cloudEnabled } from '@/db/db'
 
-function useCurrentUserEmail(): string | undefined {
-  return useSyncExternalStore(
-    (cb) => {
-      if (!cloudEnabled) return () => {}
-      const sub = db.cloud.currentUser.subscribe(cb)
-      return () => sub.unsubscribe()
-    },
-    () => cloudEnabled ? (db.cloud.currentUser.value?.email ?? undefined) : undefined,
-  )
-}
-
 export function PendingInvitesDialog() {
-  const email = useCurrentUserEmail()
+  const invites: any[] = (useObservable(cloudEnabled ? db.cloud.invites : of([])) as any[]) ?? []
   const [busy, setBusy] = useState<string | null>(null)
-
-  // Full scan — compound index [email+realmId] prevents simple where({email})
-  const invites = useLiveQuery(async () => {
-    if (!email) return []
-    const all = await db.table('members').toArray()
-    return all.filter((m: any) =>
-      m.email?.toLowerCase() === email.toLowerCase() && !m.accepted && !m.rejected
-    )
-  }, [email]) ?? []
 
   const current = invites[0] ?? null
 
@@ -39,8 +20,7 @@ export function PendingInvitesDialog() {
     if (!current) return
     setBusy('accept')
     try {
-      await db.table('members').update(current.id, { accepted: new Date() })
-      await db.cloud.sync().catch(() => {})
+      await current.accept()
       await db.cloud.sync({ purpose: 'pull', wait: true }).catch(() => {})
     } finally {
       setBusy(null)
@@ -51,13 +31,13 @@ export function PendingInvitesDialog() {
     if (!current) return
     setBusy('reject')
     try {
-      await db.table('members').update(current.id, { rejected: new Date() })
+      await current.reject()
     } finally {
       setBusy(null)
     }
   }
 
-  const realmLabel = current?.realm?.name || current?.realmId || 'outro usuário'
+  const realmLabel = (current as any)?.realm?.name || (current as any)?.realmId || 'outro usuário'
 
   return (
     <Dialog open={!!current} maxWidth="xs" fullWidth>

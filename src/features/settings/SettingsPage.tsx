@@ -154,12 +154,11 @@ export function SettingsPage() {
         (m: any) => m.email === email && m.realmId === cloudUser.userId && !m.accepted && !m.rejected
       )
       if (pendingInvite) {
-        // Re-invite: update the existing record (no delete+add to avoid unique-index race)
-        await db.table('members').update(pendingInvite.id, { userId: email, invite: true })
+        // Re-invite: just re-sync to trigger the invite email again
+        await db.table('members').update(pendingInvite.id, { invite: true })
       } else {
         await db.table('members').add({
           realmId: cloudUser.userId,
-          userId: email,
           email,
           name: email,
           invite: true,
