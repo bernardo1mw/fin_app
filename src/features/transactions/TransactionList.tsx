@@ -86,14 +86,16 @@ export function TransactionList() {
 
   async function applyOne() {
     if (!pending) return
-    await setCategory(pending.tx, pending.categoryId)
+    const { tx, categoryId } = pending
     setPending(null)
+    await setCategory(tx, categoryId)
   }
 
   async function applyAll() {
     if (!pending) return
-    await setCategoryAllByPayee(pending.tx, pending.categoryId)
+    const { tx, categoryId } = pending
     setPending(null)
+    await setCategoryAllByPayee(tx, categoryId)
   }
 
   async function applyBulk() {
