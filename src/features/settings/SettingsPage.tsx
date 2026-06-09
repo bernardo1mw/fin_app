@@ -132,9 +132,10 @@ export function SettingsPage() {
     setSyncing(true)
     setSyncError('')
     try {
-      // force: true bypasses the "sync is needed" check so we always pull
-      await (db.cloud.sync as any)({ force: true })
-      await (db.cloud.sync as any)({ force: true })
+      // purpose:'pull' bypasses the "isSyncNeeded" check and always pulls from server.
+      // Two pulls needed: first discovers inviteRealms, second downloads data from them.
+      await db.cloud.sync({ purpose: 'pull', wait: true })
+      await db.cloud.sync({ purpose: 'pull', wait: true })
     } catch (e) {
       setSyncError(e instanceof Error ? e.message : String(e))
     } finally {
