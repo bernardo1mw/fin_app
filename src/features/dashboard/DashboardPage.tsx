@@ -88,10 +88,10 @@ export function DashboardPage() {
                     <Tooltip formatter={(v) => fmt(Number(v ?? 0))} />
                     <Legend />
                     <Bar dataKey="income" name="Receita" fill="#22c55e" radius={[3, 3, 0, 0]}>
-                      <LabelList dataKey="income" position="top" formatter={(v: number) => v > 0 ? fmtShort(v) : ''} style={{ fontSize: 10, fill: '#666' }} />
+                      <LabelList dataKey="income" position="top" formatter={(v: string | number | undefined) => Number(v) > 0 ? fmtShort(Number(v)) : ''} style={{ fontSize: 10, fill: '#666' }} />
                     </Bar>
                     <Bar dataKey="expenses" name="Despesa" fill="#f97316" radius={[3, 3, 0, 0]}>
-                      <LabelList dataKey="expenses" position="top" formatter={(v: number) => v > 0 ? fmtShort(v) : ''} style={{ fontSize: 10, fill: '#666' }} />
+                      <LabelList dataKey="expenses" position="top" formatter={(v: string | number | undefined) => Number(v) > 0 ? fmtShort(Number(v)) : ''} style={{ fontSize: 10, fill: '#666' }} />
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
@@ -113,7 +113,7 @@ export function DashboardPage() {
                     <YAxis tick={{ fontSize: 11 }} tickFormatter={(v: number) => `R$${(v / 1000).toFixed(0)}k`} />
                     <Tooltip formatter={(v) => fmt(Number(v ?? 0))} />
                     <Line type="monotone" dataKey="balance" name="Saldo" stroke="#3b82f6" strokeWidth={2} dot={{ r: 4 }}>
-                      <LabelList dataKey="balance" position="top" formatter={(v: number) => fmtShort(v)} style={{ fontSize: 10, fill: '#3b82f6' }} />
+                      <LabelList dataKey="balance" position="top" formatter={(v: string | number | undefined) => fmtShort(Number(v))} style={{ fontSize: 10, fill: '#3b82f6' }} />
                     </Line>
                   </LineChart>
                 </ResponsiveContainer>
