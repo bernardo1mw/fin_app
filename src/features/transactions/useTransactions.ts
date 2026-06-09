@@ -11,6 +11,7 @@ export interface TransactionFilter {
   payeeSearch?: string
   amountMin?: number
   amountMax?: number
+  type?: 'income' | 'expense'
 }
 
 export function useTransactions(filter?: TransactionFilter) {
@@ -25,12 +26,14 @@ export function useTransactions(filter?: TransactionFilter) {
       if (filter.payeeSearch && !t.payee.toLowerCase().includes(filter.payeeSearch.toLowerCase())) return false
       if (filter.amountMin !== undefined && Math.abs(t.amount) < filter.amountMin) return false
       if (filter.amountMax !== undefined && Math.abs(t.amount) > filter.amountMax) return false
+      if (filter.type === 'income' && t.amount <= 0) return false
+      if (filter.type === 'expense' && t.amount >= 0) return false
       return true
     })
   }, [
     filter?.categoryId, filter?.accountId,
     filter?.dateFrom?.getTime(), filter?.dateTo?.getTime(),
-    filter?.payeeSearch, filter?.amountMin, filter?.amountMax,
+    filter?.payeeSearch, filter?.amountMin, filter?.amountMax, filter?.type,
   ])
 
   const categories = useLiveQuery(async () => {

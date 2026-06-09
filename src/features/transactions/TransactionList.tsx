@@ -184,6 +184,20 @@ export function TransactionList() {
               slotProps={{ inputLabel: { shrink: true } }}
               sx={{ minWidth: 140 }}
             />
+            <FormControl size="small" sx={{ minWidth: 130 }}>
+              <InputLabel>Tipo</InputLabel>
+              <Select
+                label="Tipo"
+                value={filters.type ?? ''}
+                onChange={(e: SelectChangeEvent<string>) =>
+                  setFilters(f => ({ ...f, type: (e.target.value as 'income' | 'expense') || undefined }))
+                }
+              >
+                <MenuItem value=""><em>Todos</em></MenuItem>
+                <MenuItem value="income">Receita</MenuItem>
+                <MenuItem value="expense">Despesa</MenuItem>
+              </Select>
+            </FormControl>
             <FormControl size="small" sx={{ minWidth: 140 }}>
               <InputLabel>Categoria</InputLabel>
               <Select
