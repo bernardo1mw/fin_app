@@ -153,8 +153,10 @@ export function SettingsPage() {
       const pendingInvite = all.find(
         (m: any) => m.email === email && m.realmId === cloudUser.userId && !m.accepted && !m.rejected
       )
+      // Ensure the private realm record exists — required by Dexie Cloud for sharing
+      await db.table('realms').put({ realmId: cloudUser.userId, name: cloudUser.email || cloudUser.userId })
+
       if (pendingInvite) {
-        // Re-invite: just re-sync to trigger the invite email again
         await db.table('members').update(pendingInvite.id, { invite: true })
       } else {
         await db.table('members').add({
