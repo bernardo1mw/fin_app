@@ -9,6 +9,8 @@ import Card from '@mui/material/Card'
 import CardContent from '@mui/material/CardContent'
 import Typography from '@mui/material/Typography'
 import Paper from '@mui/material/Paper'
+import { useTheme } from '@mui/material/styles'
+import useMediaQuery from '@mui/material/useMediaQuery'
 import { useDashboardData } from './useDashboardData'
 
 const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
@@ -20,6 +22,8 @@ const fmtShort = (v: number) => {
 
 export function DashboardPage() {
   const { spendingByCategory, monthlyCashFlow, netWorthPoints, summary } = useDashboardData()
+  const theme = useTheme()
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -59,9 +63,9 @@ export function DashboardPage() {
                       nameKey="name"
                       cx="50%"
                       cy="50%"
-                      outerRadius={80}
-                      label={({ name, value }) => `${(name as string).split(' ')[0]} ${fmtShort(value as number)}`}
-                      labelLine
+                      outerRadius={isMobile ? 70 : 80}
+                      label={isMobile ? undefined : ({ name, value }) => `${(name as string).split(' ')[0]} ${fmtShort(value as number)}`}
+                      labelLine={!isMobile}
                     >
                       {spendingByCategory.map((entry, i) => <Cell key={i} fill={entry.color} />)}
                     </Pie>
@@ -81,7 +85,7 @@ export function DashboardPage() {
               ? <EmptyState label="Nenhuma transação encontrada" />
               : (
                 <ResponsiveContainer width="100%" height={260}>
-                  <BarChart data={monthlyCashFlow} margin={{ left: -20 }}>
+                  <BarChart data={monthlyCashFlow} margin={{ top: 24, left: -20, right: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
                     <XAxis dataKey="month" tick={{ fontSize: 11 }} />
                     <YAxis tick={{ fontSize: 11 }} tickFormatter={(v: number) => `R$${(v / 1000).toFixed(0)}k`} />
@@ -107,7 +111,7 @@ export function DashboardPage() {
               ? <EmptyState label="Importe arquivos OFX para ver o saldo ao longo do tempo" />
               : (
                 <ResponsiveContainer width="100%" height={220}>
-                  <LineChart data={netWorthPoints} margin={{ left: -10 }}>
+                  <LineChart data={netWorthPoints} margin={{ top: 24, left: -10, right: 15 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
                     <XAxis dataKey="label" tick={{ fontSize: 11 }} />
                     <YAxis tick={{ fontSize: 11 }} tickFormatter={(v: number) => `R$${(v / 1000).toFixed(0)}k`} />
