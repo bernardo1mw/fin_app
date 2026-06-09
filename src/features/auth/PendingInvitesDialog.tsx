@@ -9,6 +9,7 @@ import Button from '@mui/material/Button'
 import Typography from '@mui/material/Typography'
 import CircularProgress from '@mui/material/CircularProgress'
 import { db, cloudEnabled } from '@/db/db'
+import { setSharedRealmId } from '@/db/sharedRealm'
 
 export function PendingInvitesDialog() {
   const invites: any[] = (useObservable(cloudEnabled ? db.cloud.invites : of([])) as any[]) ?? []
@@ -20,6 +21,11 @@ export function PendingInvitesDialog() {
     if (!current) return
     setBusy('accept')
     try {
+      // Save the shared realm ID so future writes by this user go to the shared realm
+      const realmId = (current as any).realmId || (current as any).realm?.realmId
+      const userId = db.cloud.currentUser.value?.userId
+      if (realmId && userId) setSharedRealmId(userId, realmId)
+
       await current.accept()
       await db.cloud.sync({ purpose: 'pull', wait: true }).catch(() => {})
     } finally {

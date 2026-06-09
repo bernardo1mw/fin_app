@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { db } from '@/db/db'
+import { getSharedRealmId } from '@/db/sharedRealm'
 import { parseOFXBuffer } from './OFXParser'
 import { applyRules } from '@/features/categories/useCategorization'
 import type { TransactionSubtype } from '@/db/schema'
@@ -38,6 +39,7 @@ export function useImport() {
     try {
       const buffer = await file.arrayBuffer()
       const parsed = parseOFXBuffer(buffer)
+      const realmId = getSharedRealmId(db.cloud.currentUser.value?.userId ?? '') || undefined
 
       let account = await db.accounts.filter(
         a => a.bankId === parsed.account.bankId && a.acctId === parsed.account.acctId
@@ -51,7 +53,7 @@ export function useImport() {
           ledgerBalanceAsOf: parsed.account.ledgerBalanceAsOf,
         })
       } else {
-        accountId = await db.accounts.add({ ...parsed.account, id: crypto.randomUUID() }) as string
+        accountId = await db.accounts.add({ ...parsed.account, id: crypto.randomUUID(), realmId }) as string
       }
 
       const existingFitIds = new Set(
@@ -81,7 +83,7 @@ export function useImport() {
           row.categoryId = categoryId
           if (categoryId !== null) res.categorized++
 
-          await db.transactions.add({ ...tx, id: crypto.randomUUID(), accountId, categoryId })
+          await db.transactions.add({ ...tx, id: crypto.randomUUID(), accountId, categoryId, realmId })
           existingFitIds.add(tx.fitId)
           res.imported++
           res.importedRows.push(row)

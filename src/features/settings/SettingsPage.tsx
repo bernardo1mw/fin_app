@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { Download, Eye, EyeOff, Save, Cloud, CloudOff, LogIn, LogOut, UserPlus, RefreshCw } from 'lucide-react'
 import type { SelectChangeEvent } from '@mui/material/Select'
 import { db, cloudEnabled } from '@/db/db'
+import { getSharedRealmId, setSharedRealmId } from '@/db/sharedRealm'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Button from '@mui/material/Button'
@@ -149,18 +150,35 @@ export function SettingsPage() {
     setInviteMsg('')
     try {
       const email = inviteEmail.trim().toLowerCase()
+
+      // Get or create an explicit shared realm (rlm-XXX ID).
+      // The private realm (realmId = email) has no realms table record, so Dexie Cloud
+      // never adds it to the invitee's realm set after acceptance. An explicit realm
+      // created via add() gets an rlm-XXX ID with a server-side realms record.
+      let sharedRealmId = getSharedRealmId(cloudUser.userId)
+      if (!sharedRealmId) {
+        sharedRealmId = await db.table('realms').add({
+          name: cloudUser.email || cloudUser.userId,
+        }) as string
+        setSharedRealmId(cloudUser.userId, sharedRealmId)
+
+        // Migrate all existing data into the shared realm
+        await db.transactions.toCollection().modify({ realmId: sharedRealmId })
+        await db.categories.toCollection().modify({ realmId: sharedRealmId })
+        await db.categoryRules.toCollection().modify({ realmId: sharedRealmId })
+        await db.accounts.toCollection().modify({ realmId: sharedRealmId })
+      }
+
       const all = await db.table('members').toArray()
       const pendingInvite = all.find(
-        (m: any) => m.email === email && m.realmId === cloudUser.userId && !m.accepted && !m.rejected
+        (m: any) => m.email === email && m.realmId === sharedRealmId && !m.accepted && !m.rejected
       )
-      // Ensure the private realm record exists — required by Dexie Cloud for sharing
-      await db.table('realms').put({ realmId: cloudUser.userId, name: cloudUser.email || cloudUser.userId })
 
       if (pendingInvite) {
         await db.table('members').update(pendingInvite.id, { invite: true })
       } else {
         await db.table('members').add({
-          realmId: cloudUser.userId,
+          realmId: sharedRealmId,
           email,
           name: email,
           invite: true,
@@ -171,8 +189,8 @@ export function SettingsPage() {
           },
         })
       }
-      await db.cloud.sync()
-      setInviteMsg(`Convite enviado para ${email}. Peça para a pessoa abrir o app e clicar em Sincronizar duas vezes.`)
+      await db.cloud.sync({ purpose: 'pull', wait: true })
+      setInviteMsg(`Convite enviado para ${email}.`)
       setInviteEmail('')
     } catch (e: unknown) {
       setInviteMsg(`Erro: ${e instanceof Error ? e.message : 'tente novamente'}`)

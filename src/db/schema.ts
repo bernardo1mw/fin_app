@@ -3,6 +3,7 @@ export type CategoryType = 'income' | 'expense' | 'transfer'
 
 export interface Transaction {
   id?: string
+  realmId?: string
   fitId: string
   accountId: string
   date: Date
@@ -18,6 +19,7 @@ export interface Transaction {
 
 export interface Category {
   id?: string
+  realmId?: string
   name: string
   type: CategoryType
   color: string
@@ -26,6 +28,7 @@ export interface Category {
 
 export interface CategoryRule {
   id?: string
+  realmId?: string
   cnpjPrefix: string | null
   namePattern: string | null
   matchField: 'cnpj' | 'name' | 'memo'
@@ -35,6 +38,7 @@ export interface CategoryRule {
 
 export interface Account {
   id?: string
+  realmId?: string
   bankId: string
   bankName: string
   branchId: string
