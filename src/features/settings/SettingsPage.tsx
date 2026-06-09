@@ -147,20 +147,18 @@ export function SettingsPage() {
     setInviteMsg('')
     try {
       const email = inviteEmail.trim().toLowerCase()
-      // Delete any previous invites for this email to avoid stale entries
+      // Remove only pending (not yet accepted) invites for this email to allow re-inviting
       const existing = await db.table('members').toArray()
-      const toDelete = existing
-        .filter((m: any) => m.email === email && m.realmId === cloudUser.userId)
+      const pendingToDelete = existing
+        .filter((m: any) => m.email === email && m.realmId === cloudUser.userId && !m.accepted && !m.rejected)
         .map((m: any) => m.id)
-      if (toDelete.length) await db.table('members').bulkDelete(toDelete)
+      if (pendingToDelete.length) await db.table('members').bulkDelete(pendingToDelete)
 
       await db.table('members').add({
         realmId: cloudUser.userId,
-        userId: email,
         email,
         name: email,
         invite: true,
-        // Do NOT pre-set accepted — must be accepted by the invitee themselves
         permissions: {
           add: '*',
           update: { '*': ['*'] },
