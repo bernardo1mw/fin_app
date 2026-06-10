@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import type { SelectChangeEvent } from '@mui/material/Select'
-import { db } from '@/db/db'
+import { db, triggerSync } from '@/db/db'
 import { getSharedRealmId } from '@/db/sharedRealm'
 import Dialog from '@mui/material/Dialog'
 import DialogTitle from '@mui/material/DialogTitle'
@@ -70,6 +70,7 @@ export function AddTransactionDialog({ open, onClose }: Props) {
       currency: 'BRL',
       realmId,
     })
+    triggerSync()
     reset()
     onClose()
   }

@@ -42,3 +42,8 @@ class FinanceDB extends Dexie {
 
 export const db = new FinanceDB()
 export const cloudEnabled = !!CLOUD_URL
+
+export function triggerSync(): void {
+  if (!cloudEnabled) return
+  db.cloud.sync().catch(() => {})
+}

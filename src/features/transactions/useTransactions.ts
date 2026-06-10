@@ -1,5 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db } from '@/db/db'
+import { db, triggerSync } from '@/db/db'
 import { upsertRuleForTransaction } from '@/features/categories/useCategorization'
 import type { Transaction } from '@/db/schema'
 
@@ -56,24 +56,29 @@ export function useTransactions(filter?: TransactionFilter) {
   async function setCategory(tx: Transaction, categoryId: string) {
     await db.transactions.update(tx.id!, { categoryId })
     await upsertRuleForTransaction({ cnpjPrefix: tx.cnpjPrefix, payee: tx.payee }, categoryId)
+    triggerSync()
   }
 
   async function setCategoryAllByPayee(tx: Transaction, categoryId: string) {
     const ids = await db.transactions.filter(t => t.payee === tx.payee).primaryKeys()
     await db.transactions.where(':id').anyOf(ids as string[]).modify({ categoryId })
     await upsertRuleForTransaction({ cnpjPrefix: tx.cnpjPrefix, payee: tx.payee }, categoryId)
+    triggerSync()
   }
 
   async function setCategoryBulk(ids: string[], categoryId: string) {
     await db.transactions.where(':id').anyOf(ids).modify({ categoryId })
+    triggerSync()
   }
 
   async function deleteTransaction(id: string) {
     await db.transactions.delete(id)
+    triggerSync()
   }
 
   async function deleteTransactionsBulk(ids: string[]) {
     await db.transactions.bulkDelete(ids)
+    triggerSync()
   }
 
   return { transactions, categories, accounts, setCategory, setCategoryAllByPayee, setCategoryBulk, countSamePayee, deleteTransaction, deleteTransactionsBulk }

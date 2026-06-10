@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { db } from '@/db/db'
+import { db, triggerSync } from '@/db/db'
 import { resolveActiveRealmId } from '@/db/sharedRealm'
 import { parseOFXBuffer } from './OFXParser'
 import { applyRules } from '@/features/categories/useCategorization'
@@ -119,6 +119,7 @@ export function useImport() {
       res.categorized = valid.filter(r => r.categoryId !== null).length
       setPreview(null)
       setResult(res)
+      triggerSync()
     } catch (e) {
       res.errors.push(e instanceof Error ? e.message : String(e))
       setResult(res)
@@ -134,6 +135,7 @@ export function useImport() {
       .primaryKeys() as string[]
     await db.transactions.bulkDelete(ids)
     await db.importBatches.delete(importBatchId)
+    triggerSync()
   }
 
   return { parseFile, confirmImport, undoImport, loading, preview, result }
