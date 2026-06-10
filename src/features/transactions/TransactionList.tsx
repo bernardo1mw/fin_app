@@ -20,7 +20,6 @@ import FormControl from '@mui/material/FormControl'
 import InputLabel from '@mui/material/InputLabel'
 import Select from '@mui/material/Select'
 import MenuItem from '@mui/material/MenuItem'
-import Toolbar from '@mui/material/Toolbar'
 import Dialog from '@mui/material/Dialog'
 import DialogTitle from '@mui/material/DialogTitle'
 import DialogContent from '@mui/material/DialogContent'
@@ -140,21 +139,9 @@ export function TransactionList() {
   const categoryName = pending ? (categories.find(c => c.id === pending.categoryId)?.name ?? '') : ''
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      {/* Sticky top: title + filters + bulk toolbar */}
-      <Box sx={{
-        position: 'sticky',
-        top: 0,
-        zIndex: 10,
-        bgcolor: 'background.default',
-        // Pull the box flush with the scroll container top by negating the parent's padding.
-        // AppShell main: p={xs:2,sm:3}, pt={xs:7,sm:3}
-        mt: { xs: -7, sm: -3 },
-        mx: { xs: -2, sm: -3 },
-        px: { xs: 2, sm: 3 },
-        pt: { xs: 7, sm: 3 },
-        pb: 1,
-      }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 0 }}>
+      {/* Controls: title + filters + bulk toolbar — always visible at top, never scrolls */}
+      <Box sx={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 2, pb: 2 }}>
       {/* Header */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
         <Typography variant="h5" sx={{ fontWeight: 700, flexGrow: 1 }}>Transações</Typography>
@@ -286,7 +273,7 @@ export function TransactionList() {
       {/* Bulk edit toolbar */}
       <Collapse in={selectedCount > 0}>
         <Paper variant="outlined" sx={{ bgcolor: 'primary.50' }}>
-          <Toolbar variant="dense" sx={{ gap: 2, flexWrap: 'wrap', minHeight: 48 }}>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1.5, px: 2, py: 1.5 }}>
             <Typography variant="body2" sx={{ fontWeight: 600 }}>
               {selectedCount} selecionada{selectedCount !== 1 ? 's' : ''}
             </Typography>
@@ -326,21 +313,26 @@ export function TransactionList() {
             <Button size="small" color="inherit" onClick={() => setSelected(new Set())}>
               Cancelar
             </Button>
-          </Toolbar>
+          </Box>
         </Paper>
       </Collapse>
-      </Box>{/* end sticky top */}
+      </Box>{/* end controls */}
 
       {transactions.length === 0 ? (
         <Typography variant="body2" color="text.secondary">
           Nenhuma transação encontrada.
         </Typography>
       ) : (
-        <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 'calc(100vh - 220px)', overflow: 'auto' }}>
-          <Table size="small" stickyHeader>
+        <>
+        <TableContainer
+          component={Paper}
+          variant="outlined"
+          sx={{ flex: 1, minHeight: 0, overflow: 'auto' }}
+        >
+          <Table size="small" stickyHeader sx={{ minWidth: 560 }}>
             <TableHead>
               <TableRow>
-                <TableCell padding="checkbox" sx={{ bgcolor: 'action.hover' }}>
+                <TableCell padding="checkbox" sx={{ bgcolor: 'background.paper', backgroundImage: 'linear-gradient(rgba(0,0,0,0.06) 0%, rgba(0,0,0,0.06) 100%)' }}>
                   <Checkbox
                     size="small"
                     checked={allSelected}
@@ -348,11 +340,11 @@ export function TransactionList() {
                     onChange={toggleSelectAll}
                   />
                 </TableCell>
-                <TableCell sx={{ color: 'text.secondary', fontWeight: 500, bgcolor: 'action.hover' }}>Data</TableCell>
-                <TableCell sx={{ color: 'text.secondary', fontWeight: 500, bgcolor: 'action.hover' }}>Descrição</TableCell>
-                <TableCell align="right" sx={{ color: 'text.secondary', fontWeight: 500, bgcolor: 'action.hover' }}>Valor</TableCell>
-                <TableCell sx={{ color: 'text.secondary', fontWeight: 500, bgcolor: 'action.hover' }}>Categoria</TableCell>
-                <TableCell sx={{ width: 40, bgcolor: 'action.hover' }} />
+                <TableCell sx={{ color: 'text.secondary', fontWeight: 500, bgcolor: 'background.paper', backgroundImage: 'linear-gradient(rgba(0,0,0,0.06) 0%, rgba(0,0,0,0.06) 100%)', whiteSpace: 'nowrap' }}>Data</TableCell>
+                <TableCell sx={{ color: 'text.secondary', fontWeight: 500, bgcolor: 'background.paper', backgroundImage: 'linear-gradient(rgba(0,0,0,0.06) 0%, rgba(0,0,0,0.06) 100%)', minWidth: 160 }}>Descrição</TableCell>
+                <TableCell align="right" sx={{ color: 'text.secondary', fontWeight: 500, bgcolor: 'background.paper', backgroundImage: 'linear-gradient(rgba(0,0,0,0.06) 0%, rgba(0,0,0,0.06) 100%)', whiteSpace: 'nowrap' }}>Valor</TableCell>
+                <TableCell sx={{ color: 'text.secondary', fontWeight: 500, bgcolor: 'background.paper', backgroundImage: 'linear-gradient(rgba(0,0,0,0.06) 0%, rgba(0,0,0,0.06) 100%)' }}>Categoria</TableCell>
+                <TableCell sx={{ width: 40, bgcolor: 'background.paper', backgroundImage: 'linear-gradient(rgba(0,0,0,0.06) 0%, rgba(0,0,0,0.06) 100%)' }} />
               </TableRow>
             </TableHead>
             <TableBody>
@@ -387,8 +379,8 @@ export function TransactionList() {
                     <TableCell sx={{ color: 'text.secondary', whiteSpace: 'nowrap', fontSize: 13 }}>
                       {format(tx.date, 'dd/MM/yyyy', { locale: ptBR })}
                     </TableCell>
-                    <TableCell sx={{ maxWidth: { xs: 140, sm: 280 } }}>
-                      <Typography variant="body2" noWrap sx={{ fontWeight: 500 }}>{tx.payee}</Typography>
+                    <TableCell sx={{ minWidth: 160 }}>
+                      <Typography variant="body2" sx={{ fontWeight: 500 }}>{tx.payee}</Typography>
                       {tx.transactionSubtype !== 'other' && (
                         <Chip
                           label={subtypeLabel(tx.transactionSubtype)}
@@ -432,18 +424,20 @@ export function TransactionList() {
               })}
             </TableBody>
           </Table>
-          <TablePagination
-            component="div"
-            count={transactions.length}
-            page={page}
-            onPageChange={(_, p) => setPage(p)}
-            rowsPerPage={rowsPerPage}
-            onRowsPerPageChange={e => { setRowsPerPage(parseInt(e.target.value)); setPage(0) }}
-            rowsPerPageOptions={[25, 50, 100]}
-            labelRowsPerPage="Por página:"
-            labelDisplayedRows={({ from, to, count }) => `${from}–${to} de ${count}`}
-          />
         </TableContainer>
+        <TablePagination
+          component="div"
+          count={transactions.length}
+          page={page}
+          onPageChange={(_, p) => setPage(p)}
+          rowsPerPage={rowsPerPage}
+          onRowsPerPageChange={e => { setRowsPerPage(parseInt(e.target.value)); setPage(0) }}
+          rowsPerPageOptions={[25, 50, 100]}
+          labelRowsPerPage="Por página:"
+          labelDisplayedRows={({ from, to, count }) => `${from}–${to} de ${count}`}
+          sx={{ flexShrink: 0, borderTop: 1, borderColor: 'divider' }}
+        />
+        </>
       )}
 
       {/* Same-payee category dialog */}
