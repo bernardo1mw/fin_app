@@ -1,5 +1,5 @@
 import { db } from '@/db/db'
-import { getSharedRealmId } from '@/db/sharedRealm'
+import { resolveActiveRealmId } from '@/db/sharedRealm'
 import type { Transaction, CategoryRule } from '@/db/schema'
 
 type PartialTransaction = Pick<Transaction, 'cnpjPrefix' | 'payee' | 'memo'>
@@ -20,7 +20,7 @@ export async function applyRules(tx: PartialTransaction): Promise<string | null>
 }
 
 export async function upsertRuleForTransaction(tx: Pick<Transaction, 'cnpjPrefix' | 'payee'>, categoryId: string) {
-  const realmId = getSharedRealmId(db.cloud.currentUser.value?.userId ?? '') || undefined
+  const realmId = await resolveActiveRealmId(db.cloud.currentUser.value?.userId ?? '')
 
   if (tx.cnpjPrefix) {
     const existing = await db.categoryRules.where('cnpjPrefix').equals(tx.cnpjPrefix).first()

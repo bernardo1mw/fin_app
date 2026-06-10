@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { Download, Eye, EyeOff, Save, Cloud, CloudOff, LogIn, LogOut, UserPlus, RefreshCw } from 'lucide-react'
 import type { SelectChangeEvent } from '@mui/material/Select'
 import { db, cloudEnabled } from '@/db/db'
-import { getSharedRealmId, setSharedRealmId } from '@/db/sharedRealm'
+import { getSharedRealmId, setSharedRealmId, resolveActiveRealmId } from '@/db/sharedRealm'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Button from '@mui/material/Button'
@@ -104,6 +104,11 @@ export function SettingsPage() {
   const cloudUser = useCloudUser()
   const isLoggedIn = cloudUser?.isLoggedIn ?? false
 
+  const sharedRealmId = useLiveQuery(async () => {
+    if (!cloudUser?.userId) return null
+    return await resolveActiveRealmId(cloudUser.userId) ?? null
+  }, [cloudUser?.userId])
+
   function flash(msg: string) {
     setSavedMsg(msg)
     setTimeout(() => setSavedMsg(''), 2500)
@@ -192,9 +197,7 @@ export function SettingsPage() {
   }
 
   async function handleMigrateExisting() {
-    if (!cloudUser?.userId) return
-    const sharedRealmId = getSharedRealmId(cloudUser.userId)
-    if (!sharedRealmId) return
+    if (!cloudUser?.userId || !sharedRealmId) return
     setMigrating(true)
     setMigrateMsg('')
     try {
@@ -301,7 +304,7 @@ export function SettingsPage() {
 
                 <Divider />
 
-                {cloudUser?.userId && getSharedRealmId(cloudUser.userId) && (
+                {sharedRealmId && (
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                     <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>Re-migrar dados para realm compartilhado</Typography>
                     <Typography variant="body2" color="text.secondary">

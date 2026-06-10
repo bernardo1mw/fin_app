@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { db } from '@/db/db'
-import { getSharedRealmId } from '@/db/sharedRealm'
+import { resolveActiveRealmId } from '@/db/sharedRealm'
 import { parseOFXBuffer } from './OFXParser'
 import { applyRules } from '@/features/categories/useCategorization'
 import type { Transaction } from '@/db/schema'
@@ -43,7 +43,7 @@ export function useImport() {
     try {
       const buffer = await file.arrayBuffer()
       const parsed = parseOFXBuffer(buffer)
-      const realmId = getSharedRealmId(db.cloud.currentUser.value?.userId ?? '') || undefined
+      const realmId = await resolveActiveRealmId(db.cloud.currentUser.value?.userId ?? '')
 
       let account = await db.accounts.filter(
         a => a.bankId === parsed.account.bankId && a.acctId === parsed.account.acctId
