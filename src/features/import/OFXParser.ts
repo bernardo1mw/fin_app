@@ -97,7 +97,7 @@ export function parseOFXBuffer(buffer: ArrayBuffer): ParsedOFX {
       fitId,
       date: parseOFXDate(dtPosted),
       amount: parseFloat(trnAmt),
-      payee: normalizeName(name),
+      payee: normalizeName(name) || normalizeName(memo),
       memo,
       transactionSubtype: parseSubtype(memo),
       cnpjPrefix: extractCnpjPrefix(memo),

@@ -1,6 +1,6 @@
 import { useRef, useState, useCallback } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Upload, CheckCircle, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Upload, CheckCircle, AlertCircle, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import Box from '@mui/material/Box'
@@ -20,20 +20,28 @@ import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
 import Paper from '@mui/material/Paper'
 import CircularProgress from '@mui/material/CircularProgress'
+import Tooltip from '@mui/material/Tooltip'
+import IconButton from '@mui/material/IconButton'
+import Dialog from '@mui/material/Dialog'
+import DialogTitle from '@mui/material/DialogTitle'
+import DialogContent from '@mui/material/DialogContent'
+import DialogActions from '@mui/material/DialogActions'
 import { db } from '@/db/db'
-import { useImport, type PreviewRow, type ParsedPreview } from './useImport'
+import { useImport, isValidRow, type PreviewRow, type ParsedPreview } from './useImport'
 
 const PAGE_SIZE = 15
 
 export function ImportPage() {
-  const { parseFile, confirmImport, loading, preview, result } = useImport()
+  const { parseFile, confirmImport, undoImport, loading, preview, result } = useImport()
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [tab, setTab] = useState(0)
   const [page, setPage] = useState(0)
+  const [confirmUndo, setConfirmUndo] = useState<string | null>(null)
 
   const categories = useLiveQuery(() => db.categories.toArray())
+  const importBatches = useLiveQuery(() => db.importBatches.orderBy('importedAt').reverse().toArray())
   const catMap: Record<string, string> = Object.fromEntries((categories ?? []).map(c => [c.id!, c.name]))
 
   const handleFiles = useCallback(async (files: FileList | null) => {
@@ -46,7 +54,7 @@ export function ImportPage() {
     setPage(0)
     const p = await parseFile(ofxFiles[0])
     if (p && !p.parseError) {
-      setSelected(new Set(p.newRows.map(r => r.fitId)))
+      setSelected(new Set(p.newRows.filter(isValidRow).map(r => r.fitId)))
     }
   }, [parseFile])
 
@@ -64,11 +72,17 @@ export function ImportPage() {
     setTab(0)
   }
 
+  async function handleUndo() {
+    if (!confirmUndo) return
+    await undoImport(confirmUndo)
+    setConfirmUndo(null)
+  }
+
   const rows = preview ? (tab === 0 ? preview.newRows : preview.duplicateRows) : []
   const totalPages = Math.ceil(rows.length / PAGE_SIZE)
   const pageRows = rows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
 
-  const allPageSelected = pageRows.length > 0 && pageRows.every(r => selected.has(r.fitId))
+  const allPageSelected = pageRows.length > 0 && pageRows.filter(isValidRow).every(r => selected.has(r.fitId))
   const somePageSelected = pageRows.some(r => selected.has(r.fitId))
 
   function toggleRow(fitId: string) {
@@ -80,21 +94,24 @@ export function ImportPage() {
   }
 
   function toggleAll() {
+    const validOnPage = pageRows.filter(isValidRow)
     if (allPageSelected) {
-      setSelected(s => { const next = new Set(s); pageRows.forEach(r => next.delete(r.fitId)); return next })
+      setSelected(s => { const next = new Set(s); validOnPage.forEach(r => next.delete(r.fitId)); return next })
     } else {
-      setSelected(s => { const next = new Set(s); pageRows.forEach(r => next.add(r.fitId)); return next })
+      setSelected(s => { const next = new Set(s); validOnPage.forEach(r => next.add(r.fitId)); return next })
     }
   }
 
   function selectAllNew() {
     if (!preview) return
-    setSelected(new Set(preview.newRows.map(r => r.fitId)))
+    setSelected(new Set(preview.newRows.filter(isValidRow).map(r => r.fitId)))
   }
 
   function deselectAll() {
     setSelected(new Set())
   }
+
+  const undoBatch = confirmUndo ? (importBatches ?? []).find(b => b.id === confirmUndo) : null
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, maxWidth: 800, mx: 'auto' }}>
@@ -163,11 +180,66 @@ export function ImportPage() {
           }
           <StatChip label="Importadas" value={result.imported} color="primary" />
           <StatChip label="Categorizadas auto" value={result.categorized} color="success" />
+          {result.skipped > 0 && (
+            <StatChip label="Ignoradas (inválidas)" value={result.skipped} color="default" />
+          )}
           {result.errors.map((e, i) => (
             <Typography key={i} variant="body2" color="error">{e}</Typography>
           ))}
         </Box>
       )}
+
+      {(importBatches?.length ?? 0) > 0 && (
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'text.secondary' }}>
+            Histórico de importações
+          </Typography>
+          <Paper variant="outlined">
+            <Table size="small">
+              <TableHead>
+                <TableRow sx={{ bgcolor: 'action.hover' }}>
+                  <TableCell>Arquivo</TableCell>
+                  <TableCell>Data</TableCell>
+                  <TableCell align="right">Transações</TableCell>
+                  <TableCell padding="none" sx={{ width: 48 }} />
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {(importBatches ?? []).map(batch => (
+                  <TableRow key={batch.id} hover>
+                    <TableCell sx={{ fontSize: 13 }}>{batch.filename}</TableCell>
+                    <TableCell sx={{ fontSize: 13, whiteSpace: 'nowrap', color: 'text.secondary' }}>
+                      {format(batch.importedAt, "dd/MM/yyyy HH:mm", { locale: ptBR })}
+                    </TableCell>
+                    <TableCell align="right" sx={{ fontSize: 13 }}>{batch.transactionCount}</TableCell>
+                    <TableCell padding="none">
+                      <Tooltip title="Desfazer importação">
+                        <IconButton size="small" color="error" onClick={() => setConfirmUndo(batch.id)}>
+                          <Trash2 size={14} />
+                        </IconButton>
+                      </Tooltip>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </Paper>
+        </Box>
+      )}
+
+      <Dialog open={confirmUndo !== null} onClose={() => setConfirmUndo(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Desfazer importação?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary">
+            Isso vai excluir permanentemente as <strong>{undoBatch?.transactionCount}</strong> transações
+            importadas do arquivo <strong>"{undoBatch?.filename}"</strong>. Esta ação não pode ser desfeita.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmUndo(null)}>Cancelar</Button>
+          <Button variant="contained" color="error" onClick={handleUndo}>Desfazer</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   )
 }
@@ -207,12 +279,21 @@ function ReviewPanel({
     )
   }
 
+  const invalidCount = preview.newRows.filter(r => !isValidRow(r)).length
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, maxWidth: 760 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
-        <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-          Revisar transações
-        </Typography>
+        <Box>
+          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+            Revisar transações
+          </Typography>
+          {invalidCount > 0 && (
+            <Typography variant="caption" color="warning.main">
+              {invalidCount} linha{invalidCount !== 1 ? 's' : ''} inválida{invalidCount !== 1 ? 's' : ''} serão ignoradas (descrição ou valor em branco)
+            </Typography>
+          )}
+        </Box>
         <Button
           variant="contained"
           size="small"
@@ -310,25 +391,29 @@ function PreviewRowItem({ row, selectable, checked, catMap, onToggle }: {
   catMap: Record<string, string>
   onToggle: () => void
 }) {
+  const valid = isValidRow(row)
   const isIncome = row.amount > 0
   const fmtCurrency = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: row.currency })
   return (
     <TableRow
       hover
-      onClick={selectable ? onToggle : undefined}
-      sx={selectable ? { cursor: 'pointer' } : undefined}
+      onClick={selectable && valid ? onToggle : undefined}
+      sx={selectable && valid ? { cursor: 'pointer' } : { opacity: valid ? 1 : 0.45 }}
       selected={selectable && checked}
     >
       {selectable && (
         <TableCell padding="checkbox">
-          <Checkbox size="small" checked={checked} onChange={onToggle} onClick={e => e.stopPropagation()} />
+          <Checkbox size="small" checked={checked} disabled={!valid} onChange={onToggle} onClick={e => e.stopPropagation()} />
         </TableCell>
       )}
       <TableCell sx={{ color: 'text.secondary', whiteSpace: 'nowrap', fontSize: 13 }}>
         {format(row.date, 'dd/MM/yyyy', { locale: ptBR })}
       </TableCell>
       <TableCell sx={{ maxWidth: 240, fontSize: 13 }}>
-        <Typography variant="body2" noWrap>{row.payee}</Typography>
+        {row.payee
+          ? <Typography variant="body2" noWrap>{row.payee}</Typography>
+          : <Typography variant="body2" color="error" noWrap><em>Sem descrição</em></Typography>
+        }
       </TableCell>
       <TableCell align="right" sx={{ fontFamily: 'monospace', whiteSpace: 'nowrap', fontSize: 13, color: isIncome ? 'success.main' : 'text.primary' }}>
         {isIncome ? '+' : ''}{fmtCurrency.format(row.amount)}

@@ -15,6 +15,15 @@ export interface Transaction {
   categoryId: string | null
   trnType: string
   currency: string
+  importId?: string | null
+}
+
+export interface ImportBatch {
+  id: string
+  realmId?: string
+  filename: string
+  importedAt: Date
+  transactionCount: number
 }
 
 export interface Category {
