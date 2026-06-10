@@ -142,7 +142,19 @@ export function TransactionList() {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
       {/* Sticky top: title + filters + bulk toolbar */}
-      <Box sx={{ position: 'sticky', top: 0, zIndex: 10, bgcolor: 'background.default', pb: 0.5 }}>
+      <Box sx={{
+        position: 'sticky',
+        top: 0,
+        zIndex: 10,
+        bgcolor: 'background.default',
+        // Pull the box flush with the scroll container top by negating the parent's padding.
+        // AppShell main: p={xs:2,sm:3}, pt={xs:7,sm:3}
+        mt: { xs: -7, sm: -3 },
+        mx: { xs: -2, sm: -3 },
+        px: { xs: 2, sm: 3 },
+        pt: { xs: 7, sm: 3 },
+        pb: 1,
+      }}>
       {/* Header */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
         <Typography variant="h5" sx={{ fontWeight: 700, flexGrow: 1 }}>Transações</Typography>
@@ -324,11 +336,11 @@ export function TransactionList() {
           Nenhuma transação encontrada.
         </Typography>
       ) : (
-        <TableContainer component={Paper} variant="outlined">
-          <Table size="small">
+        <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 'calc(100vh - 220px)', overflow: 'auto' }}>
+          <Table size="small" stickyHeader>
             <TableHead>
-              <TableRow sx={{ bgcolor: 'action.hover' }}>
-                <TableCell padding="checkbox">
+              <TableRow>
+                <TableCell padding="checkbox" sx={{ bgcolor: 'action.hover' }}>
                   <Checkbox
                     size="small"
                     checked={allSelected}
@@ -336,11 +348,11 @@ export function TransactionList() {
                     onChange={toggleSelectAll}
                   />
                 </TableCell>
-                <TableCell sx={{ color: 'text.secondary', fontWeight: 500 }}>Data</TableCell>
-                <TableCell sx={{ color: 'text.secondary', fontWeight: 500 }}>Descrição</TableCell>
-                <TableCell align="right" sx={{ color: 'text.secondary', fontWeight: 500 }}>Valor</TableCell>
-                <TableCell sx={{ color: 'text.secondary', fontWeight: 500 }}>Categoria</TableCell>
-                <TableCell sx={{ width: 40 }} />
+                <TableCell sx={{ color: 'text.secondary', fontWeight: 500, bgcolor: 'action.hover' }}>Data</TableCell>
+                <TableCell sx={{ color: 'text.secondary', fontWeight: 500, bgcolor: 'action.hover' }}>Descrição</TableCell>
+                <TableCell align="right" sx={{ color: 'text.secondary', fontWeight: 500, bgcolor: 'action.hover' }}>Valor</TableCell>
+                <TableCell sx={{ color: 'text.secondary', fontWeight: 500, bgcolor: 'action.hover' }}>Categoria</TableCell>
+                <TableCell sx={{ width: 40, bgcolor: 'action.hover' }} />
               </TableRow>
             </TableHead>
             <TableBody>
