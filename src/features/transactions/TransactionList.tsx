@@ -77,7 +77,7 @@ export function TransactionList() {
   function toggleRow(id: string) {
     setSelected(prev => {
       const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
+      if (next.has(id)) next.delete(id); else next.add(id)
       return next
     })
   }
@@ -219,9 +219,8 @@ export function TransactionList() {
               >
                 <MenuItem value=""><em>Todas</em></MenuItem>
                 {(categories ?? []).map(c => (
-                  <MenuItem key={c.id} value={c.id!} sx={{ gap: 1 }}>
-                    <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: c.color, flexShrink: 0 }} />
-                    {c.name}
+                  <MenuItem key={c.id} value={c.id!}>
+                    <Chip label={c.name} size="small" sx={{ bgcolor: c.color + '33', height: 20, fontSize: 12 }} />
                   </MenuItem>
                 ))}
               </Select>
@@ -286,9 +285,8 @@ export function TransactionList() {
               >
                 <MenuItem value=""><em>Selecionar</em></MenuItem>
                 {(categories ?? []).map(c => (
-                  <MenuItem key={c.id} value={String(c.id)} sx={{ gap: 1 }}>
-                    <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: c.color, flexShrink: 0 }} />
-                    {c.name}
+                  <MenuItem key={c.id} value={String(c.id)}>
+                    <Chip label={c.name} size="small" sx={{ bgcolor: c.color + '33', height: 20, fontSize: 12 }} />
                   </MenuItem>
                 ))}
               </Select>

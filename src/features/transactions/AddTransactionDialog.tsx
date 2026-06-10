@@ -14,6 +14,7 @@ import InputLabel from '@mui/material/InputLabel'
 import Select from '@mui/material/Select'
 import MenuItem from '@mui/material/MenuItem'
 import Box from '@mui/material/Box'
+import Chip from '@mui/material/Chip'
 import ToggleButton from '@mui/material/ToggleButton'
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import Typography from '@mui/material/Typography'
@@ -129,9 +130,8 @@ export function AddTransactionDialog({ open, onClose }: Props) {
           >
             <MenuItem value=""><em>Sem categoria</em></MenuItem>
             {(categories ?? []).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')).map(c => (
-              <MenuItem key={c.id} value={String(c.id)} sx={{ gap: 1 }}>
-                <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: c.color, flexShrink: 0 }} />
-                {c.name}
+              <MenuItem key={c.id} value={String(c.id)}>
+                <Chip label={c.name} size="small" sx={{ bgcolor: c.color + '33', height: 20, fontSize: 12 }} />
               </MenuItem>
             ))}
           </Select>

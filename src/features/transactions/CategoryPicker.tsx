@@ -1,7 +1,7 @@
 import FormControl from '@mui/material/FormControl'
 import Select from '@mui/material/Select'
 import MenuItem from '@mui/material/MenuItem'
-import Box from '@mui/material/Box'
+import Chip from '@mui/material/Chip'
 import type { SelectChangeEvent } from '@mui/material/Select'
 import type { Category } from '@/db/schema'
 
@@ -24,21 +24,11 @@ export function CategoryPicker({ value, categories, onChange }: Props) {
         displayEmpty
         renderValue={() =>
           selected ? (
-            <Box
-              sx={{
-                bgcolor: selected.color + '33',
-                borderRadius: 1,
-                px: 0.75,
-                fontSize: 13,
-                display: 'inline-block',
-                maxWidth: '100%',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {selected.name}
-            </Box>
+            <Chip
+              label={selected.name}
+              size="small"
+              sx={{ bgcolor: selected.color + '33', height: 20, fontSize: 12, maxWidth: '100%' }}
+            />
           ) : (
             <em style={{ fontSize: 13 }}>Sem categoria</em>
           )
@@ -47,18 +37,8 @@ export function CategoryPicker({ value, categories, onChange }: Props) {
       >
         <MenuItem value=""><em style={{ fontSize: 13 }}>Sem categoria</em></MenuItem>
         {categories.map(cat => (
-          <MenuItem
-            key={cat.id}
-            value={cat.id!}
-            sx={{
-              fontSize: 13,
-              bgcolor: cat.color + '22',
-              '&:hover': { bgcolor: cat.color + '44' },
-              '&.Mui-selected': { bgcolor: cat.color + '55' },
-              '&.Mui-selected:hover': { bgcolor: cat.color + '66' },
-            }}
-          >
-            {cat.name}
+          <MenuItem key={cat.id} value={cat.id!} sx={{ fontSize: 13 }}>
+            <Chip label={cat.name} size="small" sx={{ bgcolor: cat.color + '33', height: 20, fontSize: 12 }} />
           </MenuItem>
         ))}
       </Select>
