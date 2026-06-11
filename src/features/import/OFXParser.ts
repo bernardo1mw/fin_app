@@ -55,12 +55,10 @@ function extractCnpjPrefix(memo: string): string | null {
 }
 
 export function parseOFXBuffer(buffer: ArrayBuffer): ParsedOFX {
-  // Read header as latin-1 (ASCII-safe) to detect charset before full decode
-  const header = new TextDecoder('iso-8859-1').decode(buffer.slice(0, 1024))
-  const charsetMatch = header.match(/CHARSET\s*:\s*(\S+)/i)
-  const charset = charsetMatch?.[1]?.toUpperCase() ?? '1252'
-  const encoding = charset === 'UTF-8' || charset === 'UTF8' ? 'utf-8' : 'windows-1252'
-  const text = new TextDecoder(encoding).decode(buffer)
+  // Some banks (e.g. Nubank) declare CHARSET:1252 but export UTF-8.
+  // Try UTF-8 first; fall back to Windows-1252 only if invalid sequences appear.
+  const utf8 = new TextDecoder('utf-8', { fatal: false }).decode(buffer)
+  const text = utf8.includes('�') ? new TextDecoder('windows-1252').decode(buffer) : utf8
 
   const bankMsgBlock = extractAllBlocks(text, 'BANKMSGSRSV1')[0] ?? text
   const stmtBlock = extractAllBlocks(bankMsgBlock, 'STMTRS')[0] ?? bankMsgBlock
