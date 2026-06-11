@@ -1,7 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, triggerSync } from '@/db/db'
 import { upsertRuleForTransaction } from '@/features/categories/useCategorization'
-import { consolidateCategories } from '@/db/sharedRealm'
+import { ensureCategoryInSharedRealm } from '@/db/sharedRealm'
 import type { Transaction } from '@/db/schema'
 
 export interface TransactionFilter {
@@ -60,23 +60,23 @@ export function useTransactions(filter?: TransactionFilter) {
   }
 
   async function setCategory(tx: Transaction, categoryId: string) {
+    await ensureCategoryInSharedRealm(categoryId)
     await db.transactions.update(tx.id!, { categoryId })
     await upsertRuleForTransaction({ cnpjPrefix: tx.cnpjPrefix, payee: tx.payee }, categoryId)
-    await consolidateCategories()
     triggerSync()
   }
 
   async function setCategoryAllByPayee(tx: Transaction, categoryId: string) {
+    await ensureCategoryInSharedRealm(categoryId)
     const ids = await db.transactions.where('payee').equals(tx.payee).primaryKeys() as string[]
     await Promise.all(ids.map(id => db.transactions.update(id, { categoryId })))
     await upsertRuleForTransaction({ cnpjPrefix: tx.cnpjPrefix, payee: tx.payee }, categoryId)
-    await consolidateCategories()
     triggerSync()
   }
 
   async function setCategoryBulk(ids: string[], categoryId: string) {
+    await ensureCategoryInSharedRealm(categoryId)
     await Promise.all(ids.map(id => db.transactions.update(id, { categoryId })))
-    await consolidateCategories()
     triggerSync()
   }
 

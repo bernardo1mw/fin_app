@@ -36,25 +36,43 @@ export async function resolveActiveRealmId(userId: string): Promise<string | und
 }
 
 /**
- * Merges duplicate-named categories so every device resolves to the same ID,
- * and ensures all categories are in the shared realm so they sync.
+ * Ensures a specific category is visible to all shared-realm members.
+ * Only moves categories that belong to the current user's private realm.
+ * Never touches rlm-public or other users' categories (permission issues).
+ */
+export async function ensureCategoryInSharedRealm(categoryId: string): Promise<void> {
+  const userId = db.cloud.currentUser.value?.userId
+  if (!userId) return
+
+  const sharedRealmId = await resolveActiveRealmId(userId)
+  if (!sharedRealmId) return
+
+  const cat = await db.categories.get(categoryId)
+  if (!cat) return
+
+  // Already in shared realm — nothing to do
+  if (cat.realmId === sharedRealmId) return
+
+  // In rlm-public or another user's realm — no permission to move
+  if (cat.realmId && cat.realmId !== userId) return
+
+  await db.categories.update(categoryId, { realmId: sharedRealmId })
+}
+
+/**
+ * Merges duplicate-named categories so every device resolves to the same ID.
+ * Only processes groups with more than one category (actual duplicates).
+ * Does NOT change realmId on categories — only updates transaction and rule
+ * references to point at the canonical record.
  *
- * Rules:
- * - Prefer shared-realm categories as canonical; break ties by smallest ID
- *   (deterministic — all devices pick the same winner).
- * - Reassign transactions and rules that reference non-canonical IDs.
- * - Move the canonical category into the shared realm if it isn't already.
- *
- * NOTE: Does NOT clear "orphaned" categoryIds. Orphan detection is unsafe
- * during sync because the peer device may not yet have received the category
- * that a transaction references — clearing those IDs would propagate null
- * back to the originating device.
+ * Canonical selection: shared-realm categories preferred; ties broken by
+ * smallest ID so all devices always pick the same winner.
  *
  * Safe to run multiple times (idempotent).
  */
 export async function consolidateCategories(sharedRealmId?: string): Promise<void> {
-  const resolvedRealmId = sharedRealmId
-    ?? await resolveActiveRealmId(db.cloud.currentUser.value?.userId ?? '')
+  const userId = db.cloud.currentUser.value?.userId ?? ''
+  const resolvedRealmId = sharedRealmId ?? await resolveActiveRealmId(userId)
   if (!resolvedRealmId) return
 
   const all = await db.categories.toArray()
@@ -70,20 +88,16 @@ export async function consolidateCategories(sharedRealmId?: string): Promise<voi
   let changed = false
 
   for (const [, group] of byName) {
-    // Canonical: prefer shared realm, then smallest ID (deterministic across devices)
+    if (group.length <= 1) continue  // no duplicates — nothing to do
+
+    // Canonical: prefer categories already in the shared realm, then smallest ID
     const canonical = group.reduce((best, c) => {
-      const cShared = !!c.realmId
-      const bestShared = !!best.realmId
+      const cShared = c.realmId === resolvedRealmId
+      const bestShared = best.realmId === resolvedRealmId
       if (cShared && !bestShared) return c
       if (!cShared && bestShared) return best
       return (c.id ?? '') < (best.id ?? '') ? c : best
     })
-
-    // Ensure canonical is in the shared realm so the other user can see it
-    if (canonical.realmId !== resolvedRealmId) {
-      await db.categories.update(canonical.id!, { realmId: resolvedRealmId })
-      changed = true
-    }
 
     for (const dup of group) {
       if (dup.id === canonical.id) continue

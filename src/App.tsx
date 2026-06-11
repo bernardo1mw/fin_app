@@ -29,19 +29,11 @@ const theme = createTheme({
 export default function App() {
   useEffect(() => {
     if (!cloudEnabled) return
-
-    async function runConsolidation() {
-      const userId = db.cloud.currentUser.value?.userId ?? ''
-      const realmId = await resolveActiveRealmId(userId)
-      if (realmId) await consolidateCategories(realmId)
-    }
-
-    runConsolidation()
-
-    const sub = db.cloud.syncState.subscribe(state => {
-      if (state.phase === 'in-sync') runConsolidation()
-    })
-    return () => sub.unsubscribe()
+    // Run once on startup to merge any duplicate-named categories that
+    // accumulated before this fix (e.g. both users creating the same name).
+    resolveActiveRealmId(db.cloud.currentUser.value?.userId ?? '')
+      .then(realmId => { if (realmId) consolidateCategories(realmId) })
+      .catch(() => {})
   }, [])
 
   return (
