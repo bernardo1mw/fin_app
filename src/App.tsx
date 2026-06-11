@@ -12,7 +12,7 @@ import { CategoryManager } from '@/features/categories/CategoryManager'
 import { SuggestionsPanel } from '@/features/suggestions/SuggestionsPanel'
 import { SettingsPage } from '@/features/settings/SettingsPage'
 import { db, cloudEnabled } from '@/db/db'
-import { resolveActiveRealmId, consolidateCategories } from '@/db/sharedRealm'
+import { resolveActiveRealmId, migratePrivateCategories, consolidateCategories } from '@/db/sharedRealm'
 
 const theme = createTheme({
   typography: {
@@ -32,7 +32,11 @@ export default function App() {
     // Run once on startup to merge any duplicate-named categories that
     // accumulated before this fix (e.g. both users creating the same name).
     resolveActiveRealmId(db.cloud.currentUser.value?.userId ?? '')
-      .then(realmId => { if (realmId) consolidateCategories(realmId) })
+      .then(async realmId => {
+        if (!realmId) return
+        await migratePrivateCategories(realmId)
+        await consolidateCategories(realmId)
+      })
       .catch(() => {})
   }, [])
 

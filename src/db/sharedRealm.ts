@@ -60,6 +60,27 @@ export async function ensureCategoryInSharedRealm(categoryId: string): Promise<v
 }
 
 /**
+ * Moves all categories that live in the current user's private realm into the
+ * shared realm so the other user can see them. Only touches categories with
+ * realmId = undefined/null (Dexie assigns those to the user's private realm)
+ * or realmId === userId. Never touches rlm-public or other users' realms.
+ */
+export async function migratePrivateCategories(sharedRealmId: string): Promise<void> {
+  const userId = db.cloud.currentUser.value?.userId ?? ''
+  if (!userId) return
+
+  const all = await db.categories.toArray()
+  const toMigrate = all.filter(c =>
+    c.realmId !== sharedRealmId &&          // not already in shared realm
+    (c.realmId == null || c.realmId === userId) // only user's own private realm
+  )
+  if (toMigrate.length === 0) return
+
+  await Promise.all(toMigrate.map(c => db.categories.update(c.id!, { realmId: sharedRealmId })))
+  triggerSync()
+}
+
+/**
  * Merges duplicate-named categories so every device resolves to the same ID.
  * Only processes groups with more than one category (actual duplicates).
  * Does NOT change realmId on categories — only updates transaction and rule
