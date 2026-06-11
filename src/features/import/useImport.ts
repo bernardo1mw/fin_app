@@ -98,25 +98,34 @@ export function useImport() {
       const valid = selected.filter(isValidRow)
       res.skipped = selected.length - valid.length
 
-      await db.importBatches.add({
-        id: importBatchId,
-        realmId: p.realmId,
-        filename: p.filename,
-        importedAt: new Date(),
-        transactionCount: valid.length,
-      })
+      if (valid.length > 0) {
+        await db.transactions.bulkAdd(
+          valid.map(row => ({
+            ...row,
+            id: crypto.randomUUID(),
+            accountId: p.accountId,
+            realmId: p.realmId,
+            importId: importBatchId,
+          }))
+        )
+      }
 
-      await db.transactions.bulkAdd(
-        valid.map(row => ({
-          ...row,
-          id: crypto.randomUUID(),
-          accountId: p.accountId,
-          realmId: p.realmId,
-          importId: importBatchId,
-        }))
-      )
       res.imported = valid.length
       res.categorized = valid.filter(r => r.categoryId !== null).length
+
+      // Batch record is best-effort — don't let it block the import
+      try {
+        await db.importBatches.add({
+          id: importBatchId,
+          realmId: p.realmId,
+          filename: p.filename,
+          importedAt: new Date(),
+          transactionCount: valid.length,
+        })
+      } catch {
+        // importBatches unavailable (e.g. schema migration pending) — import still succeeded
+      }
+
       setPreview(null)
       setResult(res)
       triggerSync()
