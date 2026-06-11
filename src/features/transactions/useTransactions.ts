@@ -50,7 +50,7 @@ export function useTransactions(filter?: TransactionFilter) {
   const accounts = useLiveQuery(() => db.accounts.toArray())
 
   async function countSamePayee(tx: Transaction): Promise<number> {
-    return db.transactions.filter(t => t.payee === tx.payee && t.id !== tx.id).count()
+    return db.transactions.where('payee').equals(tx.payee).filter(t => t.id !== tx.id).count()
   }
 
   async function setCategory(tx: Transaction, categoryId: string) {
@@ -60,8 +60,7 @@ export function useTransactions(filter?: TransactionFilter) {
   }
 
   async function setCategoryAllByPayee(tx: Transaction, categoryId: string) {
-    const ids = await db.transactions.filter(t => t.payee === tx.payee).primaryKeys() as string[]
-    await Promise.all(ids.map(id => db.transactions.update(id, { categoryId })))
+    await db.transactions.where('payee').equals(tx.payee).modify({ categoryId })
     await upsertRuleForTransaction({ cnpjPrefix: tx.cnpjPrefix, payee: tx.payee }, categoryId)
     triggerSync()
   }
