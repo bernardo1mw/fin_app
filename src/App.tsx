@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { HashRouter, Routes, Route } from 'react-router-dom'
 import { ThemeProvider, createTheme } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
@@ -10,6 +11,8 @@ import { ImportPage } from '@/features/import/ImportPage'
 import { CategoryManager } from '@/features/categories/CategoryManager'
 import { SuggestionsPanel } from '@/features/suggestions/SuggestionsPanel'
 import { SettingsPage } from '@/features/settings/SettingsPage'
+import { db, cloudEnabled } from '@/db/db'
+import { resolveActiveRealmId, consolidateCategories } from '@/db/sharedRealm'
 
 const theme = createTheme({
   typography: {
@@ -24,6 +27,23 @@ const theme = createTheme({
 })
 
 export default function App() {
+  useEffect(() => {
+    if (!cloudEnabled) return
+
+    async function runConsolidation() {
+      const userId = db.cloud.currentUser.value?.userId ?? ''
+      const realmId = await resolveActiveRealmId(userId)
+      if (realmId) await consolidateCategories(realmId)
+    }
+
+    runConsolidation()
+
+    const sub = db.cloud.syncState.subscribe(state => {
+      if (state.phase === 'in-sync') runConsolidation()
+    })
+    return () => sub.unsubscribe()
+  }, [])
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
