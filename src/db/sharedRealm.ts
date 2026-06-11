@@ -36,46 +36,52 @@ export async function resolveActiveRealmId(userId: string): Promise<string | und
 }
 
 /**
- * Canonical category selection — same logic used in every dedup across the app.
- * Prefer shared-realm categories; break ties by smallest ID (deterministic across devices).
- */
-function pickCanonical<T extends { id?: string; realmId?: string }>(group: T[]): T {
-  return group.reduce((best, c) => {
-    const cShared = !!c.realmId
-    const bestShared = !!best.realmId
-    if (cShared && !bestShared) return c
-    if (!cShared && bestShared) return best
-    return (c.id ?? '') < (best.id ?? '') ? c : best
-  })
-}
-
-/**
- * Merges duplicate-named categories so every device resolves to the same ID.
- * For each name collision: picks a canonical record, reassigns transactions and
- * rules that reference non-canonical IDs, and ensures the canonical is in the
- * shared realm. Also clears any orphaned categoryIds on transactions.
+ * Merges duplicate-named categories so every device resolves to the same ID,
+ * and ensures all categories are in the shared realm so they sync.
+ *
+ * Rules:
+ * - Prefer shared-realm categories as canonical; break ties by smallest ID
+ *   (deterministic — all devices pick the same winner).
+ * - Reassign transactions and rules that reference non-canonical IDs.
+ * - Move the canonical category into the shared realm if it isn't already.
+ *
+ * NOTE: Does NOT clear "orphaned" categoryIds. Orphan detection is unsafe
+ * during sync because the peer device may not yet have received the category
+ * that a transaction references — clearing those IDs would propagate null
+ * back to the originating device.
+ *
  * Safe to run multiple times (idempotent).
  */
-export async function consolidateCategories(sharedRealmId: string): Promise<void> {
+export async function consolidateCategories(sharedRealmId?: string): Promise<void> {
+  const resolvedRealmId = sharedRealmId
+    ?? await resolveActiveRealmId(db.cloud.currentUser.value?.userId ?? '')
+  if (!resolvedRealmId) return
+
   const all = await db.categories.toArray()
 
-  // Group by normalised name
   const byName = new Map<string, typeof all>()
   for (const c of all) {
-    const key = c.name.trim().toLowerCase()
-    const group = byName.get(key) ?? []
+    const name = c.name.trim().toLowerCase()
+    const group = byName.get(name) ?? []
     group.push(c)
-    byName.set(key, group)
+    byName.set(name, group)
   }
 
   let changed = false
 
   for (const [, group] of byName) {
-    const canonical = pickCanonical(group)
+    // Canonical: prefer shared realm, then smallest ID (deterministic across devices)
+    const canonical = group.reduce((best, c) => {
+      const cShared = !!c.realmId
+      const bestShared = !!best.realmId
+      if (cShared && !bestShared) return c
+      if (!cShared && bestShared) return best
+      return (c.id ?? '') < (best.id ?? '') ? c : best
+    })
 
-    // Move canonical into the shared realm if it isn't already
-    if (canonical.realmId !== sharedRealmId) {
-      await db.categories.update(canonical.id!, { realmId: sharedRealmId })
+    // Ensure canonical is in the shared realm so the other user can see it
+    if (canonical.realmId !== resolvedRealmId) {
+      await db.categories.update(canonical.id!, { realmId: resolvedRealmId })
       changed = true
     }
 
@@ -94,16 +100,6 @@ export async function consolidateCategories(sharedRealmId: string): Promise<void
         changed = true
       }
     }
-  }
-
-  // Fix orphaned categoryIds (category was deleted on another device)
-  const validIds = new Set(all.map(c => c.id!).filter(Boolean))
-  const orphaned = await db.transactions
-    .filter(t => !!t.categoryId && !validIds.has(t.categoryId!))
-    .primaryKeys() as string[]
-  if (orphaned.length > 0) {
-    await Promise.all(orphaned.map(id => db.transactions.update(id, { categoryId: null })))
-    changed = true
   }
 
   if (changed) triggerSync()
