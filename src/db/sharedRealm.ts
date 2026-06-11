@@ -174,6 +174,10 @@ export async function consolidateCategories(sharedRealmId?: string): Promise<voi
         await Promise.all(ruleIds.map(id => db.categoryRules.update(id, { categoryId: canonical.id })))
         changed = true
       }
+
+      // Delete the duplicate so it no longer appears in dropdowns
+      await db.categories.delete(dup.id!)
+      changed = true
     }
   }
 

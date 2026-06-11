@@ -27,22 +27,9 @@ import type { Category } from '@/db/schema'
 const TYPE_LABELS = { income: 'Renda', expense: 'Despesa', transfer: 'Transferência' }
 
 export function CategoryManager() {
-  const categories = useLiveQuery(async () => {
-    const userId = db.cloud.currentUser.value?.userId ?? ''
-    const sharedRealmId = await resolveActiveRealmId(userId)
-    const all = await db.categories.toArray()
-    const byName = new Map<string, typeof all[number]>()
-    for (const c of all) {
-      const existing = byName.get(c.name)
-      if (!existing) { byName.set(c.name, c); continue }
-      const cShared = c.realmId === sharedRealmId
-      const exShared = existing.realmId === sharedRealmId
-      if (cShared && !exShared) { byName.set(c.name, c); continue }
-      if (!cShared && exShared) continue
-      if ((c.id ?? '') < (existing.id ?? '')) byName.set(c.name, c)
-    }
-    return Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
-  })
+  const categories = useLiveQuery(() =>
+    db.categories.orderBy('name').toArray()
+  )
   const [editing, setEditing] = useState<Category | null>(null)
   const [creating, setCreating] = useState(false)
   const [confirming, setConfirming] = useState(false)
