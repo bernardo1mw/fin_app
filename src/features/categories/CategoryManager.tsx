@@ -115,13 +115,18 @@ function CategoryDialog({ open, initial, onClose }: {
 
   async function handleSave() {
     if (!name.trim()) return
-    if (initial?.id) {
-      await db.categories.update(initial.id, { name: name.trim(), type, color })
-    } else {
-      const realmId = await requireRealmId()
-      await db.categories.add({ name: name.trim(), type, color, icon: 'circle-dot', realmId })
+    try {
+      if (initial?.id) {
+        await db.categories.update(initial.id, { name: name.trim(), type, color })
+      } else {
+        const realmId = await requireRealmId()
+        await db.categories.add({ id: crypto.randomUUID(), name: name.trim(), type, color, icon: 'circle-dot', realmId })
+      }
+      onClose()
+    } catch (err) {
+      console.error('[CategoryDialog] save failed:', err)
+      alert('Erro ao salvar categoria: ' + String(err))
     }
-    onClose()
   }
 
   return (
