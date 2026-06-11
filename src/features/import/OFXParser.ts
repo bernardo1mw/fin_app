@@ -55,7 +55,12 @@ function extractCnpjPrefix(memo: string): string | null {
 }
 
 export function parseOFXBuffer(buffer: ArrayBuffer): ParsedOFX {
-  const text = new TextDecoder('windows-1252').decode(buffer)
+  // Read header as latin-1 (ASCII-safe) to detect charset before full decode
+  const header = new TextDecoder('latin-1').decode(buffer.slice(0, 1024))
+  const charsetMatch = header.match(/CHARSET\s*:\s*(\S+)/i)
+  const charset = charsetMatch?.[1]?.toUpperCase() ?? '1252'
+  const encoding = charset === 'UTF-8' || charset === 'UTF8' ? 'utf-8' : 'windows-1252'
+  const text = new TextDecoder(encoding).decode(buffer)
 
   const bankMsgBlock = extractAllBlocks(text, 'BANKMSGSRSV1')[0] ?? text
   const stmtBlock = extractAllBlocks(bankMsgBlock, 'STMTRS')[0] ?? bankMsgBlock
