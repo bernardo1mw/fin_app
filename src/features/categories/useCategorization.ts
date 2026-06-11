@@ -1,6 +1,6 @@
 import { db } from '@/db/db'
 import { resolveActiveRealmId } from '@/db/sharedRealm'
-import type { Transaction, CategoryRule } from '@/db/schema'
+import type { Transaction } from '@/db/schema'
 
 type PartialTransaction = Pick<Transaction, 'cnpjPrefix' | 'payee' | 'memo'>
 
