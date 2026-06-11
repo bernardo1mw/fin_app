@@ -29,15 +29,24 @@ const theme = createTheme({
 export default function App() {
   useEffect(() => {
     if (!cloudEnabled) return
-    // Run once on startup to merge any duplicate-named categories that
-    // accumulated before this fix (e.g. both users creating the same name).
-    resolveActiveRealmId(db.cloud.currentUser.value?.userId ?? '')
-      .then(async realmId => {
-        if (!realmId) return
-        await migratePrivateCategories(realmId)
-        await consolidateCategories(realmId)
-      })
-      .catch(() => {})
+
+    async function runSync() {
+      const userId = db.cloud.currentUser.value?.userId ?? ''
+      const realmId = await resolveActiveRealmId(userId)
+      if (!realmId) return
+      await migratePrivateCategories(realmId)
+      await consolidateCategories(realmId)
+    }
+
+    // Run on startup and after every completed sync so newly-arrived
+    // duplicate categories get merged. Safe: both devices pick the same
+    // canonical (exact sharedRealmId match + smallest ID tiebreak), so
+    // running on both sides produces no conflicting changes.
+    runSync()
+    const sub = db.cloud.syncState.subscribe(state => {
+      if (state.phase === 'in-sync') runSync()
+    })
+    return () => sub.unsubscribe()
   }, [])
 
   return (

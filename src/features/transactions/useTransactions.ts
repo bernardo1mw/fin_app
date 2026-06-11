@@ -1,7 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, triggerSync } from '@/db/db'
 import { upsertRuleForTransaction } from '@/features/categories/useCategorization'
-import { ensureCategoryInSharedRealm } from '@/db/sharedRealm'
+import { ensureCategoryInSharedRealm, resolveActiveRealmId } from '@/db/sharedRealm'
 import type { Transaction } from '@/db/schema'
 
 export interface TransactionFilter {
@@ -38,15 +38,15 @@ export function useTransactions(filter?: TransactionFilter) {
   ])
 
   const categories = useLiveQuery(async () => {
+    const userId = db.cloud.currentUser.value?.userId ?? ''
+    const sharedRealmId = await resolveActiveRealmId(userId)
     const all = await db.categories.toArray()
     const byName = new Map<string, typeof all[number]>()
     for (const c of all) {
       const existing = byName.get(c.name)
       if (!existing) { byName.set(c.name, c); continue }
-      // Prefer shared-realm categories so all devices resolve to the same ID.
-      // Tiebreak by ID to make the choice deterministic across devices.
-      const cShared = !!c.realmId
-      const exShared = !!existing.realmId
+      const cShared = c.realmId === sharedRealmId
+      const exShared = existing.realmId === sharedRealmId
       if (cShared && !exShared) { byName.set(c.name, c); continue }
       if (!cShared && exShared) continue
       if ((c.id ?? '') < (existing.id ?? '')) byName.set(c.name, c)
