@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import type { SelectChangeEvent } from '@mui/material/Select'
 import { db, triggerSync } from '@/db/db'
-import { getSharedRealmId } from '@/db/sharedRealm'
+import { requireRealmId } from '@/db/sharedRealm'
 import Dialog from '@mui/material/Dialog'
 import DialogTitle from '@mui/material/DialogTitle'
 import DialogContent from '@mui/material/DialogContent'
@@ -54,7 +54,7 @@ export function AddTransactionDialog({ open, onClose }: Props) {
     const txDate = new Date(date + 'T12:00:00')
     const chosenAccountId = accountId || accounts?.[0]?.id || ''
 
-    const realmId = getSharedRealmId(db.cloud.currentUser.value?.userId ?? '') || undefined
+    const realmId = await requireRealmId()
     await db.transactions.add({
       id: crypto.randomUUID(),
       fitId: 'manual-' + crypto.randomUUID(),

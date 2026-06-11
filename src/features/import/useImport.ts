@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { db, triggerSync } from '@/db/db'
-import { resolveActiveRealmId } from '@/db/sharedRealm'
+import { requireRealmId, resolveCanonicalCategoryId } from '@/db/sharedRealm'
 import { parseOFXBuffer } from './OFXParser'
 import { applyRules } from '@/features/categories/useCategorization'
 import type { Transaction } from '@/db/schema'
@@ -43,7 +43,7 @@ export function useImport() {
     try {
       const buffer = await file.arrayBuffer()
       const parsed = parseOFXBuffer(buffer)
-      const realmId = await resolveActiveRealmId(db.cloud.currentUser.value?.userId ?? '')
+      const realmId = await requireRealmId()
 
       let account = await db.accounts.filter(
         a => a.bankId === parsed.account.bankId && a.acctId === parsed.account.acctId
@@ -71,7 +71,8 @@ export function useImport() {
         if (existingFitIds.has(tx.fitId)) {
           duplicateRows.push({ ...tx, categoryId: null, importId: null })
         } else {
-          const categoryId = await applyRules(tx)
+          const rawCategoryId = await applyRules(tx)
+          const categoryId = rawCategoryId ? await resolveCanonicalCategoryId(rawCategoryId) : null
           newRows.push({ ...tx, categoryId, importId: null })
         }
       }

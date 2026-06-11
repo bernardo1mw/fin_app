@@ -20,11 +20,12 @@ export async function resolveActiveRealmId(userId: string): Promise<string | und
   if (!userId) return undefined
 
   const cached = getSharedRealmId(userId)
-  if (cached) return cached
+  if (cached === 'rlm-public') localStorage.removeItem(key(userId))
+  else if (cached) return cached
 
   try {
     const allRealms: Array<{ realmId?: string }> = await db.table('realms').toArray()
-    const shared = allRealms.find(r => r.realmId && r.realmId !== userId)
+    const shared = allRealms.find(r => r.realmId && r.realmId !== userId && r.realmId !== 'rlm-public')
     if (shared?.realmId) {
       setSharedRealmId(userId, shared.realmId)
       return shared.realmId
@@ -33,6 +34,18 @@ export async function resolveActiveRealmId(userId: string): Promise<string | und
     // realms table unavailable (cloud not enabled)
   }
   return undefined
+}
+
+/**
+ * Returns the best available realmId for the current user.
+ * Prefers the shared realm; falls back to the user's private realm (userId)
+ * so objects are never created with realmId=undefined (which Dexie Cloud
+ * routes to rlm-public, where regular users lack write permission).
+ */
+export async function requireRealmId(): Promise<string | undefined> {
+  const userId = db.cloud.currentUser.value?.userId
+  if (!userId) return undefined
+  return (await resolveActiveRealmId(userId)) ?? userId
 }
 
 /**
@@ -45,6 +58,19 @@ export async function resolveActiveRealmId(userId: string): Promise<string | und
  * Use this at categorization time so transactions always store the canonical
  * ID without relying on background consolidation.
  */
+function pickCanonical<T extends { id?: string; realmId?: string }>(a: T, b: T, sharedRealmId: string): T {
+  const aShared = a.realmId === sharedRealmId
+  const bShared = b.realmId === sharedRealmId
+  if (aShared && !bShared) return a
+  if (!aShared && bShared) return b
+  // Prefer stable seeded IDs (cat- prefix) over UUIDs so seeded categories are never deleted
+  const aSeeded = (a.id ?? '').startsWith('cat-')
+  const bSeeded = (b.id ?? '').startsWith('cat-')
+  if (aSeeded && !bSeeded) return a
+  if (!aSeeded && bSeeded) return b
+  return (a.id ?? '') < (b.id ?? '') ? a : b
+}
+
 export async function resolveCanonicalCategoryId(categoryId: string): Promise<string> {
   const userId = db.cloud.currentUser.value?.userId ?? ''
   if (!userId) return categoryId
@@ -59,13 +85,7 @@ export async function resolveCanonicalCategoryId(categoryId: string): Promise<st
     .filter(c => c.name.trim().toLowerCase() === cat.name.trim().toLowerCase())
     .toArray()
 
-  const canonical = dups.reduce((best, c) => {
-    const cShared = c.realmId === sharedRealmId
-    const bestShared = best.realmId === sharedRealmId
-    if (cShared && !bestShared) return c
-    if (!cShared && bestShared) return best
-    return (c.id ?? '') < (best.id ?? '') ? c : best
-  }, dups[0])
+  const canonical = dups.reduce((best, c) => pickCanonical(c, best, sharedRealmId), dups[0])
 
   // Ensure the canonical is in the shared realm
   if (canonical.realmId !== sharedRealmId && (canonical.realmId == null || canonical.realmId === userId)) {
@@ -111,8 +131,8 @@ export async function migratePrivateCategories(sharedRealmId: string): Promise<v
 
   const all = await db.categories.toArray()
   const toMigrate = all.filter(c =>
-    c.realmId !== sharedRealmId &&          // not already in shared realm
-    (c.realmId == null || c.realmId === userId) // only user's own private realm
+    c.realmId !== sharedRealmId &&
+    (c.realmId == null || c.realmId === userId || c.realmId === 'rlm-public')
   )
   if (toMigrate.length === 0) return
 
@@ -152,16 +172,12 @@ export async function consolidateCategories(sharedRealmId?: string): Promise<voi
     if (group.length <= 1) continue  // no duplicates — nothing to do
 
     // Canonical: prefer categories already in the shared realm, then smallest ID
-    const canonical = group.reduce((best, c) => {
-      const cShared = c.realmId === resolvedRealmId
-      const bestShared = best.realmId === resolvedRealmId
-      if (cShared && !bestShared) return c
-      if (!cShared && bestShared) return best
-      return (c.id ?? '') < (best.id ?? '') ? c : best
-    })
+    const canonical = group.reduce((best, c) => pickCanonical(c, best, resolvedRealmId))
 
     for (const dup of group) {
       if (dup.id === canonical.id) continue
+      // Never delete seeded categories — their fixed IDs are the stable anchor
+      if ((dup.id ?? '').startsWith('cat-')) continue
 
       const txIds = await db.transactions.where('categoryId').equals(dup.id!).primaryKeys() as string[]
       if (txIds.length > 0) {
