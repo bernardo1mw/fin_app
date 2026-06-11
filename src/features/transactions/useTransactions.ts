@@ -41,9 +41,14 @@ export function useTransactions(filter?: TransactionFilter) {
     const byName = new Map<string, typeof all[number]>()
     for (const c of all) {
       const existing = byName.get(c.name)
-      if (!existing || (c.id?.startsWith('cat-') && !existing.id?.startsWith('cat-'))) {
-        byName.set(c.name, c)
-      }
+      if (!existing) { byName.set(c.name, c); continue }
+      // Prefer shared-realm categories so all devices resolve to the same ID.
+      // Tiebreak by ID to make the choice deterministic across devices.
+      const cShared = !!c.realmId
+      const exShared = !!existing.realmId
+      if (cShared && !exShared) { byName.set(c.name, c); continue }
+      if (!cShared && exShared) continue
+      if ((c.id ?? '') < (existing.id ?? '')) byName.set(c.name, c)
     }
     return Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
   })
