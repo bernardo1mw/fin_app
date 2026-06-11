@@ -60,7 +60,8 @@ export function useTransactions(filter?: TransactionFilter) {
   }
 
   async function setCategoryAllByPayee(tx: Transaction, categoryId: string) {
-    await db.transactions.where('payee').equals(tx.payee).modify({ categoryId })
+    const ids = await db.transactions.where('payee').equals(tx.payee).primaryKeys() as string[]
+    await Promise.all(ids.map(id => db.transactions.update(id, { categoryId })))
     await upsertRuleForTransaction({ cnpjPrefix: tx.cnpjPrefix, payee: tx.payee }, categoryId)
     triggerSync()
   }
