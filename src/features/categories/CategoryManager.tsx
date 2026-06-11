@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { Pencil, Trash2, Plus, RotateCcw } from 'lucide-react'
 import type { SelectChangeEvent } from '@mui/material/Select'
 import { db } from '@/db/db'
-import { resolveActiveRealmId } from '@/db/sharedRealm'
+import { requireRealmId } from '@/db/sharedRealm'
 
 import { reseedCategories } from '@/db/seeds'
 import Box from '@mui/material/Box'
@@ -118,7 +118,7 @@ function CategoryDialog({ open, initial, onClose }: {
     if (initial?.id) {
       await db.categories.update(initial.id, { name: name.trim(), type, color })
     } else {
-      const realmId = await resolveActiveRealmId(db.cloud.currentUser.value?.userId ?? '')
+      const realmId = await requireRealmId()
       await db.categories.add({ name: name.trim(), type, color, icon: 'circle-dot', realmId })
     }
     onClose()
