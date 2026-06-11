@@ -38,13 +38,18 @@ export default function App() {
       await consolidateCategories(realmId)
     }
 
-    // Run on startup and after every completed sync so newly-arrived
-    // duplicate categories get merged. Safe: both devices pick the same
-    // canonical (exact sharedRealmId match + smallest ID tiebreak), so
-    // running on both sides produces no conflicting changes.
+    // Run on startup for whatever is already in the local DB.
     runSync()
+
+    // Run once more after the first sync completes so we also catch
+    // categories that arrived from the other device via sync.
+    // Only once — continuous consolidation causes spontaneous category changes.
+    let ranAfterSync = false
     const sub = db.cloud.syncState.subscribe(state => {
-      if (state.phase === 'in-sync') runSync()
+      if (state.phase === 'in-sync' && !ranAfterSync) {
+        ranAfterSync = true
+        runSync()
+      }
     })
     return () => sub.unsubscribe()
   }, [])

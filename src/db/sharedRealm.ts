@@ -36,6 +36,46 @@ export async function resolveActiveRealmId(userId: string): Promise<string | und
 }
 
 /**
+ * Given a categoryId chosen by the user, returns the canonical ID for that
+ * category name — i.e. the one all devices will agree on (shared realm
+ * preferred, then smallest ID). Moves a private category to the shared realm
+ * if there are no shared duplicates. Ensures the canonical is in the shared
+ * realm before returning.
+ *
+ * Use this at categorization time so transactions always store the canonical
+ * ID without relying on background consolidation.
+ */
+export async function resolveCanonicalCategoryId(categoryId: string): Promise<string> {
+  const userId = db.cloud.currentUser.value?.userId ?? ''
+  if (!userId) return categoryId
+
+  const sharedRealmId = await resolveActiveRealmId(userId)
+  if (!sharedRealmId) return categoryId
+
+  const cat = await db.categories.get(categoryId)
+  if (!cat) return categoryId
+
+  const dups = await db.categories
+    .filter(c => c.name.trim().toLowerCase() === cat.name.trim().toLowerCase())
+    .toArray()
+
+  const canonical = dups.reduce((best, c) => {
+    const cShared = c.realmId === sharedRealmId
+    const bestShared = best.realmId === sharedRealmId
+    if (cShared && !bestShared) return c
+    if (!cShared && bestShared) return best
+    return (c.id ?? '') < (best.id ?? '') ? c : best
+  }, dups[0])
+
+  // Ensure the canonical is in the shared realm
+  if (canonical.realmId !== sharedRealmId && (canonical.realmId == null || canonical.realmId === userId)) {
+    await db.categories.update(canonical.id!, { realmId: sharedRealmId })
+  }
+
+  return canonical.id!
+}
+
+/**
  * Ensures a specific category is visible to all shared-realm members.
  * Only moves categories that belong to the current user's private realm.
  * Never touches rlm-public or other users' categories (permission issues).
