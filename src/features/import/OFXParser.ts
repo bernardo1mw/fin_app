@@ -56,7 +56,7 @@ function extractCnpjPrefix(memo: string): string | null {
 
 export function parseOFXBuffer(buffer: ArrayBuffer): ParsedOFX {
   // Read header as latin-1 (ASCII-safe) to detect charset before full decode
-  const header = new TextDecoder('latin-1').decode(buffer.slice(0, 1024))
+  const header = new TextDecoder('iso-8859-1').decode(buffer.slice(0, 1024))
   const charsetMatch = header.match(/CHARSET\s*:\s*(\S+)/i)
   const charset = charsetMatch?.[1]?.toUpperCase() ?? '1252'
   const encoding = charset === 'UTF-8' || charset === 'UTF8' ? 'utf-8' : 'windows-1252'
