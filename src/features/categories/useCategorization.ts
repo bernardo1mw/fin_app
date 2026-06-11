@@ -27,15 +27,15 @@ export async function upsertRuleForTransaction(tx: Pick<Transaction, 'cnpjPrefix
     if (existing) {
       await db.categoryRules.update(existing.id!, { categoryId })
     } else {
-      const rule: Omit<CategoryRule, 'id'> = {
+      await db.categoryRules.add({
+        id: crypto.randomUUID(),
         cnpjPrefix: tx.cnpjPrefix,
         namePattern: null,
         matchField: 'cnpj',
         categoryId,
         priority: 10,
         realmId,
-      }
-      await db.categoryRules.add(rule)
+      })
     }
   } else {
     const normalizedName = tx.payee.toLowerCase()
@@ -45,15 +45,15 @@ export async function upsertRuleForTransaction(tx: Pick<Transaction, 'cnpjPrefix
     if (existing) {
       await db.categoryRules.update(existing.id!, { categoryId })
     } else {
-      const rule: Omit<CategoryRule, 'id'> = {
+      await db.categoryRules.add({
+        id: crypto.randomUUID(),
         cnpjPrefix: null,
         namePattern: normalizedName,
         matchField: 'name',
         categoryId,
         priority: 5,
         realmId,
-      }
-      await db.categoryRules.add(rule)
+      })
     }
   }
 }
