@@ -2,15 +2,18 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/db/db'
 import { startOfMonth, endOfMonth, subMonths, format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
+import { getApprovedMatchedTxIds } from '@/features/matches/useMatches'
 
 // selectedMonth = null means "all time"
 export function useDashboardData(selectedMonth: Date | null) {
   const dep = selectedMonth?.getTime() ?? null
 
   const spendingByCategory = useLiveQuery(async () => {
-    const txs = selectedMonth
+    const excluded = await getApprovedMatchedTxIds()
+    const allTxs = selectedMonth
       ? await db.transactions.where('date').between(startOfMonth(selectedMonth), endOfMonth(selectedMonth)).toArray()
       : await db.transactions.toArray()
+    const txs = allTxs.filter(t => !excluded.has(t.id!))
     const categories = await db.categories.toArray()
     const catMap = Object.fromEntries(categories.map(c => [c.id!, c]))
 
@@ -33,6 +36,7 @@ export function useDashboardData(selectedMonth: Date | null) {
   }, [dep])
 
   const monthlyCashFlow = useLiveQuery(async () => {
+    const excluded = await getApprovedMatchedTxIds()
     let months: Date[]
 
     if (selectedMonth) {
@@ -47,7 +51,8 @@ export function useDashboardData(selectedMonth: Date | null) {
     return Promise.all(months.map(async (month) => {
       const start = startOfMonth(month)
       const end = endOfMonth(month)
-      const txs = await db.transactions.where('date').between(start, end).toArray()
+      const all = await db.transactions.where('date').between(start, end).toArray()
+      const txs = all.filter(t => !excluded.has(t.id!))
       const income = txs.filter(t => t.amount > 0).reduce((s, t) => s + t.amount, 0)
       const expenses = txs.filter(t => t.amount < 0).reduce((s, t) => s + Math.abs(t.amount), 0)
       return { month: format(month, 'MMM/yy', { locale: ptBR }), income, expenses }
@@ -55,7 +60,8 @@ export function useDashboardData(selectedMonth: Date | null) {
   }, [dep])
 
   const netWorthPoints = useLiveQuery(async () => {
-    const allTxs = await db.transactions.orderBy('date').toArray()
+    const excluded = await getApprovedMatchedTxIds()
+    const allTxs = (await db.transactions.orderBy('date').toArray()).filter(t => !excluded.has(t.id!))
     if (!allTxs.length) return []
 
     const monthMap: Record<string, number> = {}
@@ -74,12 +80,14 @@ export function useDashboardData(selectedMonth: Date | null) {
   })
 
   const summary = useLiveQuery(async () => {
-    const txs = selectedMonth
+    const excluded = await getApprovedMatchedTxIds()
+    const allTxs = selectedMonth
       ? await db.transactions.where('date').between(startOfMonth(selectedMonth), endOfMonth(selectedMonth)).toArray()
       : await db.transactions.toArray()
+    const txs = allTxs.filter(t => !excluded.has(t.id!))
     const income = txs.filter(t => t.amount > 0).reduce((s, t) => s + t.amount, 0)
     const expenses = txs.filter(t => t.amount < 0).reduce((s, t) => s + Math.abs(t.amount), 0)
-    const uncategorized = await db.transactions.filter(t => t.categoryId === null).count()
+    const uncategorized = await db.transactions.filter(t => t.categoryId === null && !excluded.has(t.id!)).count()
     return { income, expenses, balance: income - expenses, uncategorized }
   }, [dep])
 

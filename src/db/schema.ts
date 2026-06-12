@@ -58,6 +58,15 @@ export interface Account {
   ledgerBalanceAsOf: Date | null
 }
 
+export interface TransactionMatch {
+  id: string
+  realmId?: string
+  txId1: string
+  txId2: string
+  status: 'pending' | 'approved' | 'rejected'
+  createdAt: Date
+}
+
 export interface UserProfile {
   id: 1
   monthlyIncome: number

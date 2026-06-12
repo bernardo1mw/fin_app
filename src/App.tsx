@@ -10,6 +10,7 @@ import { TransactionList } from '@/features/transactions/TransactionList'
 import { ImportPage } from '@/features/import/ImportPage'
 import { CategoryManager } from '@/features/categories/CategoryManager'
 import { SuggestionsPanel } from '@/features/suggestions/SuggestionsPanel'
+import { MatchesPage } from '@/features/matches/MatchesPage'
 import { SettingsPage } from '@/features/settings/SettingsPage'
 import { db, cloudEnabled } from '@/db/db'
 import { resolveActiveRealmId, migratePrivateCategories, consolidateCategories } from '@/db/sharedRealm'
@@ -67,6 +68,7 @@ export default function App() {
             <Route path="import" element={<ImportPage />} />
             <Route path="categories" element={<CategoryManager />} />
             <Route path="suggestions" element={<SuggestionsPanel />} />
+            <Route path="matches" element={<MatchesPage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>
         </Routes>
