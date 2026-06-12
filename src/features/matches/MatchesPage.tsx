@@ -100,9 +100,25 @@ export function MatchesPage() {
 
   useEffect(() => { runDetection() }, [])
 
-  // Clear selections when lists change
-  useEffect(() => { setPendingSelected(s => { const next = new Set(s); for (const id of s) { if (!pending.find(m => m.id === id)) next.delete(id) }; return next }) }, [pending])
-  useEffect(() => { setApprovedSelected(s => { const next = new Set(s); for (const id of s) { if (!approved.find(m => m.id === id)) next.delete(id) }; return next }) }, [approved])
+  // Remove stale selections when the list shrinks (e.g. after bulk action).
+  // Must return the same Set reference when nothing changed, otherwise React re-renders
+  // indefinitely because filter() always produces a new array reference.
+  useEffect(() => {
+    setPendingSelected(s => {
+      if (s.size === 0) return s
+      const ids = new Set(pending.map(m => m.id))
+      const next = new Set([...s].filter(id => ids.has(id)))
+      return next.size === s.size ? s : next
+    })
+  }, [pending])
+  useEffect(() => {
+    setApprovedSelected(s => {
+      if (s.size === 0) return s
+      const ids = new Set(approved.map(m => m.id))
+      const next = new Set([...s].filter(id => ids.has(id)))
+      return next.size === s.size ? s : next
+    })
+  }, [approved])
 
   async function runDetection() {
     setDetecting(true)
