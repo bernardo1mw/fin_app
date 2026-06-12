@@ -120,7 +120,8 @@ function CategoryDialog({ open, initial, onClose }: {
         await db.categories.update(initial.id, { name: name.trim(), type, color })
       } else {
         const realmId = await requireRealmId()
-        await db.categories.add({ id: crypto.randomUUID(), name: name.trim(), type, color, icon: 'circle-dot', realmId })
+        const id = crypto.randomUUID()
+        await db.categories.add({ id, name: name.trim(), type, color, icon: 'circle-dot', realmId }, id)
       }
       onClose()
     } catch (err) {
