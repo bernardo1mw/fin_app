@@ -477,6 +477,65 @@ function DiagnosticsPanel({ userId, onShowToggle, show }: { userId?: string; onS
   const txMutations = useLiveQuery<number, number>(() => db.table('$transactions_mutations').count().catch(() => -1), [], -1)
   const realms = useLiveQuery<CloudRealm[], CloudRealm[]>(() => db.table('realms').toArray().catch(() => []), [], [])
   const syncState = cloudEnabled ? db.cloud.syncState.value : null
+  const [deletingRealm, setDeletingRealm] = useState<string | null>(null)
+
+  async function handleDeleteRealm(realmIdToDelete: string) {
+    if (!userId) return
+    // Canonical = the first own realm that is NOT the one being deleted
+    const ownRealms = (realms ?? []).filter(r => r.realmId && r.realmId !== 'rlm-public' && r.realmId !== userId)
+    const canonical = ownRealms.find(r => r.realmId !== realmIdToDelete)?.realmId
+    if (!canonical) { alert('Nenhum realm alternativo encontrado — não é possível excluir.'); return }
+    if (!confirm(`Excluir realm ${realmIdToDelete}?\nDados serão migrados para ${canonical}.`)) return
+
+    setDeletingRealm(realmIdToDelete)
+    try {
+      await db.transaction('rw', [db.transactions, db.categories, db.categoryRules, db.accounts], async () => {
+        const [txs, cats, rules, accs] = await Promise.all([
+          db.transactions.filter(t => t.realmId === realmIdToDelete).toArray(),
+          db.categories.filter(c => c.realmId === realmIdToDelete).toArray(),
+          db.categoryRules.filter(r => r.realmId === realmIdToDelete).toArray(),
+          db.accounts.filter(a => a.realmId === realmIdToDelete).toArray(),
+        ])
+        if (txs.length) {
+          await db.transactions.bulkDelete(txs.map(t => t.id!))
+          await db.transactions.bulkAdd(txs.map(t => ({ ...t, realmId: canonical })))
+        }
+        if (cats.length) {
+          await db.categories.bulkDelete(cats.map(c => c.id!))
+          await db.categories.bulkAdd(cats.map(c => ({ ...c, realmId: canonical })))
+        }
+        if (rules.length) {
+          await db.categoryRules.bulkDelete(rules.map(r => r.id!))
+          await db.categoryRules.bulkAdd(rules.map(r => ({ ...r, realmId: canonical })))
+        }
+        if (accs.length) {
+          await db.accounts.bulkDelete(accs.map(a => a.id!))
+          await db.accounts.bulkAdd(accs.map(a => ({ ...a, realmId: canonical })))
+        }
+      })
+      // Remove members of the deleted realm
+      const realmMembers: CloudMember[] = await db.table('members').where('realmId').equals(realmIdToDelete).toArray().catch(() => [])
+      if (realmMembers.length) await db.table('members').bulkDelete(realmMembers.map((m: CloudMember) => m.id!))
+      // Delete the realm itself
+      await db.table('realms').delete(realmIdToDelete)
+      // Clear from localStorage if stored
+      if (userId) {
+        const stored = localStorage.getItem(`sharedRealm_${userId}`)
+        if (stored === realmIdToDelete) {
+          localStorage.setItem(`sharedRealm_${userId}`, canonical)
+        }
+      }
+      await db.cloud.sync()
+      await db.cloud.sync({ purpose: 'pull', wait: true })
+    } catch (e) {
+      alert('Erro ao excluir realm: ' + (e instanceof Error ? e.message : String(e)))
+    } finally {
+      setDeletingRealm(null)
+    }
+  }
+
+  // Realms owned by this user (excluding rlm-public and private realm)
+  const ownRealms = (realms ?? []).filter(r => r.realmId && r.realmId !== 'rlm-public' && r.realmId !== userId)
 
   return (
     <Box>
@@ -494,7 +553,20 @@ function DiagnosticsPanel({ userId, onShowToggle, show }: { userId?: string; onS
           ))}
           <div>realms ({realms.length}):</div>
           {realms.map((r, i) => (
-            <div key={i}>  [{i}] realmId={r.realmId} owner={r.owner}</div>
+            <Box key={i} sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+              <span>  [{i}] realmId={r.realmId} owner={r.owner}</span>
+              {r.realmId && ownRealms.length > 1 && ownRealms.some(o => o.realmId === r.realmId) && (
+                <Button
+                  size="small"
+                  color="error"
+                  sx={{ fontSize: 10, minWidth: 0, px: 0.5, py: 0, lineHeight: 1.2 }}
+                  disabled={deletingRealm === r.realmId}
+                  onClick={() => handleDeleteRealm(r.realmId!)}
+                >
+                  {deletingRealm === r.realmId ? '...' : 'excluir'}
+                </Button>
+              )}
+            </Box>
           ))}
         </Box>
       )}
