@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { Download, Eye, EyeOff, Save, Cloud, CloudOff, LogIn, LogOut, UserPlus, RefreshCw } from 'lucide-react'
 import type { SelectChangeEvent } from '@mui/material/Select'
 import { db, cloudEnabled } from '@/db/db'
-import { getSharedRealmId, setSharedRealmId, resolveActiveRealmId } from '@/db/sharedRealm'
+import { setSharedRealmId, resolveActiveRealmId } from '@/db/sharedRealm'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Button from '@mui/material/Button'
@@ -219,7 +219,8 @@ export function SettingsPage() {
     try {
       const email = inviteEmail.trim().toLowerCase()
 
-      let sharedRealmId = getSharedRealmId(cloudUser.userId)
+      // Use existing realm if one is already synced — avoid creating duplicates
+      let sharedRealmId = await resolveActiveRealmId(cloudUser.userId)
       if (!sharedRealmId) {
         sharedRealmId = await db.table('realms').add({
           name: cloudUser.email || cloudUser.userId,

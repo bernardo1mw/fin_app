@@ -218,6 +218,7 @@ export function TransactionList() {
                 }
               >
                 <MenuItem value=""><em>Todas</em></MenuItem>
+                <MenuItem value="__none__"><em>Sem categoria</em></MenuItem>
                 {(categories ?? []).map(c => (
                   <MenuItem key={c.id} value={c.id!}>
                     <Chip label={c.name} size="small" sx={{ bgcolor: c.color + '33', height: 20, fontSize: 12 }} />

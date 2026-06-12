@@ -19,19 +19,23 @@ export function setSharedRealmId(userId: string, realmId: string): void {
 export async function resolveActiveRealmId(userId: string): Promise<string | undefined> {
   if (!userId) return undefined
 
-  const cached = getSharedRealmId(userId)
-  if (cached === 'rlm-public') localStorage.removeItem(key(userId))
-  else if (cached) return cached
-
   try {
     const allRealms: Array<{ realmId?: string }> = await db.table('realms').toArray()
-    const shared = allRealms.find(r => r.realmId && r.realmId !== userId && r.realmId !== 'rlm-public')
+    // Sort so all devices always pick the same realm when multiples exist
+    const ownRealms = allRealms
+      .filter(r => r.realmId && r.realmId !== userId && r.realmId !== 'rlm-public')
+      .sort((a, b) => (a.realmId! < b.realmId! ? -1 : 1))
+    const shared = ownRealms[0]
     if (shared?.realmId) {
       setSharedRealmId(userId, shared.realmId)
       return shared.realmId
     }
+    // No shared realm found — clear stale cache so we don't write objects into a deleted realm
+    localStorage.removeItem(key(userId))
   } catch {
-    // realms table unavailable (cloud not enabled)
+    // realms table unavailable (cloud not enabled) — fall back to cache
+    const cached = getSharedRealmId(userId)
+    if (cached && cached !== 'rlm-public') return cached
   }
   return undefined
 }

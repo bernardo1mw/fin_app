@@ -1,4 +1,5 @@
-import { TrendingUp, TrendingDown, Wallet, AlertCircle } from 'lucide-react'
+import { useState } from 'react'
+import { TrendingUp, TrendingDown, Wallet, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react'
 import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend,
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -9,8 +10,12 @@ import Card from '@mui/material/Card'
 import CardContent from '@mui/material/CardContent'
 import Typography from '@mui/material/Typography'
 import Paper from '@mui/material/Paper'
+import IconButton from '@mui/material/IconButton'
+import Button from '@mui/material/Button'
 import { useTheme } from '@mui/material/styles'
 import useMediaQuery from '@mui/material/useMediaQuery'
+import { startOfMonth, addMonths, subMonths, format, isSameMonth } from 'date-fns'
+import { ptBR } from 'date-fns/locale'
 import { useDashboardData } from './useDashboardData'
 
 const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
@@ -21,19 +26,49 @@ const fmtShort = (v: number) => {
 }
 
 export function DashboardPage() {
-  const { spendingByCategory, monthlyCashFlow, netWorthPoints, summary } = useDashboardData()
+  // null = all time
+  const [selectedMonth, setSelectedMonth] = useState<Date | null>(() => startOfMonth(new Date()))
+  const { spendingByCategory, monthlyCashFlow, netWorthPoints, summary } = useDashboardData(selectedMonth)
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
 
+  const allTime = selectedMonth === null
+  const isCurrentMonth = !allTime && isSameMonth(selectedMonth, new Date())
+  const monthLabel = selectedMonth ? format(selectedMonth, 'MMMM yyyy', { locale: ptBR }) : ''
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-      <Typography variant="h5" sx={{ fontWeight: 700 }}>Dashboard</Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Typography variant="h5" sx={{ fontWeight: 700, flexGrow: 1 }}>Dashboard</Typography>
+        <Button
+          size="small"
+          variant={allTime ? 'contained' : 'outlined'}
+          onClick={() => setSelectedMonth(allTime ? startOfMonth(new Date()) : null)}
+          sx={{ minWidth: 0, px: 1.5, textTransform: 'none', fontSize: 13 }}
+        >
+          Tudo
+        </Button>
+        <IconButton size="small" onClick={() => setSelectedMonth(m => subMonths(m ?? new Date(), 1))} disabled={allTime}>
+          <ChevronLeft size={18} />
+        </IconButton>
+        <Typography
+          variant="body2"
+          sx={{ minWidth: 120, textAlign: 'center', fontWeight: 600, textTransform: 'capitalize', cursor: allTime ? 'default' : 'pointer', color: allTime ? 'text.disabled' : 'text.primary' }}
+          onClick={() => { if (!allTime) setSelectedMonth(startOfMonth(new Date())) }}
+          title={allTime ? '' : 'Voltar para mês atual'}
+        >
+          {allTime ? '—' : monthLabel}
+        </Typography>
+        <IconButton size="small" onClick={() => setSelectedMonth(m => addMonths(m ?? new Date(), 1))} disabled={allTime || isCurrentMonth}>
+          <ChevronRight size={18} />
+        </IconButton>
+      </Box>
 
       {/* KPI cards — always visible */}
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: 'repeat(4, 1fr)' }, gap: 2 }}>
-        <KpiCard label="Receitas (mês)" value={summary?.income ?? 0} icon={TrendingUp} positive />
-        <KpiCard label="Despesas (mês)" value={summary?.expenses ?? 0} icon={TrendingDown} positive={false} />
-        <KpiCard label="Saldo (mês)" value={summary?.balance ?? 0} icon={Wallet} positive={(summary?.balance ?? 0) >= 0} />
+        <KpiCard label="Receitas" value={summary?.income ?? 0} icon={TrendingUp} positive />
+        <KpiCard label="Despesas" value={summary?.expenses ?? 0} icon={TrendingDown} positive={false} />
+        <KpiCard label="Saldo" value={summary?.balance ?? 0} icon={Wallet} positive={(summary?.balance ?? 0) >= 0} />
         {(summary?.uncategorized ?? 0) > 0 ? (
           <Paper variant="outlined" sx={{ p: 2, display: 'flex', gap: 1.5, alignItems: 'flex-start', borderColor: 'warning.light' }}>
             <AlertCircle size={16} color="#ed6c02" style={{ marginTop: 2, flexShrink: 0 }} />
@@ -51,9 +86,9 @@ export function DashboardPage() {
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1fr 1fr' }, gap: 3 }}>
         <Card>
           <CardContent>
-            <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5 }}>Gastos por categoria (mês atual)</Typography>
+            <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5 }}>Gastos por categoria</Typography>
             {!spendingByCategory?.length
-              ? <EmptyState label="Nenhum gasto categorizado este mês" />
+              ? <EmptyState label="Nenhum gasto categorizado neste período" />
               : (
                 <ResponsiveContainer width="100%" height={260}>
                   <PieChart>
@@ -80,7 +115,7 @@ export function DashboardPage() {
 
         <Card>
           <CardContent>
-            <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5 }}>Fluxo de caixa (12 meses)</Typography>
+            <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5 }}>Fluxo de caixa {allTime ? '(todo o período)' : '(12 meses)'}</Typography>
             {!monthlyCashFlow?.some(m => m.income > 0 || m.expenses > 0)
               ? <EmptyState label="Nenhuma transação encontrada" />
               : (

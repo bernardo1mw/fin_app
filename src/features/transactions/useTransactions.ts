@@ -20,10 +20,13 @@ export function useTransactions(filter?: TransactionFilter) {
     const all = await db.transactions.orderBy('date').reverse().toArray()
     if (!filter) return all
     return all.filter(t => {
-      if (filter.categoryId !== undefined && t.categoryId !== filter.categoryId) return false
+      if (filter.categoryId !== undefined) {
+        if (filter.categoryId === '__none__' ? t.categoryId !== null : t.categoryId !== filter.categoryId) return false
+      }
       if (filter.accountId !== undefined && t.accountId !== filter.accountId) return false
-      if (filter.dateFrom && t.date < filter.dateFrom) return false
-      if (filter.dateTo && t.date > filter.dateTo) return false
+      const txDate = t.date instanceof Date ? t.date : new Date(t.date as string)
+      if (filter.dateFrom && txDate < filter.dateFrom) return false
+      if (filter.dateTo && txDate > filter.dateTo) return false
       if (filter.payeeSearch && !t.payee.toLowerCase().includes(filter.payeeSearch.toLowerCase())) return false
       if (filter.amountMin !== undefined && Math.abs(t.amount) < filter.amountMin) return false
       if (filter.amountMax !== undefined && Math.abs(t.amount) > filter.amountMax) return false

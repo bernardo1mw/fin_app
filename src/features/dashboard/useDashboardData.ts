@@ -3,12 +3,14 @@ import { db } from '@/db/db'
 import { startOfMonth, endOfMonth, subMonths, format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
-export function useDashboardData() {
+// selectedMonth = null means "all time"
+export function useDashboardData(selectedMonth: Date | null) {
+  const dep = selectedMonth?.getTime() ?? null
+
   const spendingByCategory = useLiveQuery(async () => {
-    const now = new Date()
-    const start = startOfMonth(now)
-    const end = endOfMonth(now)
-    const txs = await db.transactions.where('date').between(start, end).toArray()
+    const txs = selectedMonth
+      ? await db.transactions.where('date').between(startOfMonth(selectedMonth), endOfMonth(selectedMonth)).toArray()
+      : await db.transactions.toArray()
     const categories = await db.categories.toArray()
     const catMap = Object.fromEntries(categories.map(c => [c.id!, c]))
 
@@ -28,11 +30,20 @@ export function useDashboardData() {
       map[key].value += Math.abs(tx.amount)
     }
     return Object.values(map).sort((a, b) => b.value - a.value)
-  })
+  }, [dep])
 
   const monthlyCashFlow = useLiveQuery(async () => {
-    const now = new Date()
-    const months = Array.from({ length: 12 }, (_, i) => subMonths(now, 11 - i))
+    let months: Date[]
+
+    if (selectedMonth) {
+      months = Array.from({ length: 12 }, (_, i) => subMonths(selectedMonth, 11 - i))
+    } else {
+      const allTxs = await db.transactions.orderBy('date').toArray()
+      if (!allTxs.length) return []
+      const keys = new Set(allTxs.map(t => format(t.date instanceof Date ? t.date : new Date(t.date as string), 'yyyy-MM')))
+      months = Array.from(keys).sort().map(k => new Date(k + '-01'))
+    }
+
     return Promise.all(months.map(async (month) => {
       const start = startOfMonth(month)
       const end = endOfMonth(month)
@@ -41,7 +52,7 @@ export function useDashboardData() {
       const expenses = txs.filter(t => t.amount < 0).reduce((s, t) => s + Math.abs(t.amount), 0)
       return { month: format(month, 'MMM/yy', { locale: ptBR }), income, expenses }
     }))
-  })
+  }, [dep])
 
   const netWorthPoints = useLiveQuery(async () => {
     const allTxs = await db.transactions.orderBy('date').toArray()
@@ -49,7 +60,7 @@ export function useDashboardData() {
 
     const monthMap: Record<string, number> = {}
     for (const tx of allTxs) {
-      const key = format(tx.date, 'yyyy-MM')
+      const key = format(tx.date instanceof Date ? tx.date : new Date(tx.date as string), 'yyyy-MM')
       monthMap[key] = (monthMap[key] ?? 0) + tx.amount
     }
 
@@ -63,15 +74,14 @@ export function useDashboardData() {
   })
 
   const summary = useLiveQuery(async () => {
-    const now = new Date()
-    const start = startOfMonth(now)
-    const end = endOfMonth(now)
-    const txs = await db.transactions.where('date').between(start, end).toArray()
+    const txs = selectedMonth
+      ? await db.transactions.where('date').between(startOfMonth(selectedMonth), endOfMonth(selectedMonth)).toArray()
+      : await db.transactions.toArray()
     const income = txs.filter(t => t.amount > 0).reduce((s, t) => s + t.amount, 0)
     const expenses = txs.filter(t => t.amount < 0).reduce((s, t) => s + Math.abs(t.amount), 0)
     const uncategorized = await db.transactions.filter(t => t.categoryId === null).count()
     return { income, expenses, balance: income - expenses, uncategorized }
-  })
+  }, [dep])
 
   return { spendingByCategory, monthlyCashFlow, netWorthPoints, summary }
 }
