@@ -28,11 +28,16 @@ import Collapse from '@mui/material/Collapse'
 import Tooltip from '@mui/material/Tooltip'
 import CircularProgress from '@mui/material/CircularProgress'
 import TablePagination from '@mui/material/TablePagination'
-import { Filter, Plus, Trash2, X } from 'lucide-react'
+import Alert from '@mui/material/Alert'
+import Tabs from '@mui/material/Tabs'
+import Tab from '@mui/material/Tab'
+import { Filter, Plus, Trash2, X, GitMerge } from 'lucide-react'
 import { CategoryPicker } from './CategoryPicker'
 import { useTransactions } from './useTransactions'
 import type { TransactionFilter } from './useTransactions'
 import { AddTransactionDialog } from './AddTransactionDialog'
+import { MatchesPage } from '@/features/matches/MatchesPage'
+import { createManualMatch } from '@/features/matches/useMatches'
 import type { Transaction } from '@/db/schema'
 
 interface PendingChange {
@@ -53,6 +58,9 @@ export function TransactionList() {
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false)
   const [page, setPage] = useState(0)
   const [rowsPerPage, setRowsPerPage] = useState(25)
+  const [tab, setTab] = useState(0)
+  const [matchError, setMatchError] = useState<string | null>(null)
+  const [matchLoading, setMatchLoading] = useState(false)
 
   function updateFilters(updater: (f: TransactionFilter) => TransactionFilter) {
     setFilters(updater)
@@ -60,7 +68,28 @@ export function TransactionList() {
   }
 
   const { transactions, categories, accounts, setCategory, setCategoryAllByPayee, setCategoryBulk, countSamePayee, deleteTransaction, deleteTransactionsBulk } =
-    useTransactions(filters)
+    useTransactions(filters, true)
+
+  function handleTabChange(_: React.SyntheticEvent, newTab: number) {
+    setTab(newTab)
+    setSelected(new Set())
+    setMatchError(null)
+  }
+
+  async function handleCreateMatch() {
+    const [id1, id2] = Array.from(selected)
+    setMatchLoading(true)
+    setMatchError(null)
+    try {
+      await createManualMatch(id1, id2)
+      setSelected(new Set())
+      setTab(1)
+    } catch (e) {
+      setMatchError(e instanceof Error ? e.message : 'Erro ao criar match')
+    } finally {
+      setMatchLoading(false)
+    }
+  }
 
   const allIds = (transactions ?? []).map(t => t.id!)
   const allSelected = allIds.length > 0 && allIds.every(id => selected.has(id))
@@ -140,32 +169,46 @@ export function TransactionList() {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 0 }}>
-      {/* Controls: title + filters + bulk toolbar — always visible at top, never scrolls */}
-      <Box sx={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 2, pb: 2 }}>
+      {/* Controls: title + tabs + filters + bulk toolbar — always visible at top, never scrolls */}
+      <Box sx={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 0, pb: 0 }}>
       {/* Header */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', pb: 1 }}>
         <Typography variant="h5" sx={{ fontWeight: 700, flexGrow: 1 }}>Transações</Typography>
-        <Tooltip title="Filtros">
-          <IconButton
-            onClick={() => setShowFilters(v => !v)}
-            color={showFilters ? 'primary' : 'default'}
-            size="small"
-          >
-            <Filter size={18} />
-          </IconButton>
-        </Tooltip>
-        <Button
-          variant="contained"
-          startIcon={<Plus size={16} />}
-          onClick={() => setShowAdd(true)}
-          size="small"
-        >
-          Nova transação
-        </Button>
+        {tab === 0 && (
+          <>
+            <Tooltip title="Filtros">
+              <IconButton
+                onClick={() => setShowFilters(v => !v)}
+                color={showFilters ? 'primary' : 'default'}
+                size="small"
+              >
+                <Filter size={18} />
+              </IconButton>
+            </Tooltip>
+            <Button
+              variant="contained"
+              startIcon={<Plus size={16} />}
+              onClick={() => setShowAdd(true)}
+              size="small"
+            >
+              Nova transação
+            </Button>
+          </>
+        )}
       </Box>
 
-      {/* Filter bar */}
-      <Collapse in={showFilters}>
+      {/* Tabs */}
+      <Tabs value={tab} onChange={handleTabChange} sx={{ borderBottom: 1, borderColor: 'divider', mb: 1 }}>
+        <Tab label="Transações" />
+        <Tab label="Matches" icon={<GitMerge size={14} />} iconPosition="start" />
+      </Tabs>
+
+      {matchError && (
+        <Alert severity="error" onClose={() => setMatchError(null)} sx={{ mb: 1 }}>{matchError}</Alert>
+      )}
+
+      {/* Filter bar — tab 0 only */}
+      <Collapse in={tab === 0 && showFilters}>
         <Paper variant="outlined" sx={{ p: 2 }}>
           <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'flex-end' }}>
             <TextField
@@ -270,13 +313,25 @@ export function TransactionList() {
         </Paper>
       </Collapse>
 
-      {/* Bulk edit toolbar */}
-      <Collapse in={selectedCount > 0}>
-        <Paper variant="outlined" sx={{ bgcolor: 'primary.50' }}>
+      {/* Bulk edit toolbar — tab 0 only */}
+      <Collapse in={tab === 0 && selectedCount > 0}>
+        <Paper variant="outlined" sx={{ bgcolor: 'primary.50', mb: 1 }}>
           <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1.5, px: 2, py: 1.5 }}>
             <Typography variant="body2" sx={{ fontWeight: 600 }}>
               {selectedCount} selecionada{selectedCount !== 1 ? 's' : ''}
             </Typography>
+            {selectedCount === 2 && (
+              <Button
+                size="small"
+                variant="outlined"
+                color="secondary"
+                startIcon={matchLoading ? <CircularProgress size={12} /> : <GitMerge size={14} />}
+                onClick={handleCreateMatch}
+                disabled={matchLoading}
+              >
+                Criar match
+              </Button>
+            )}
             <FormControl size="small" sx={{ minWidth: 160 }}>
               <InputLabel>Categoria</InputLabel>
               <Select
@@ -317,7 +372,11 @@ export function TransactionList() {
       </Collapse>
       </Box>{/* end controls */}
 
-      {transactions.length === 0 ? (
+      {tab === 1 ? (
+        <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+          <MatchesPage />
+        </Box>
+      ) : transactions.length === 0 ? (
         <Typography variant="body2" color="text.secondary">
           Nenhuma transação encontrada.
         </Typography>

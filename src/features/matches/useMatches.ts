@@ -133,3 +133,21 @@ export async function getApprovedMatchedTxIds(): Promise<Set<string>> {
   for (const m of approved) { ids.add(m.txId1); ids.add(m.txId2) }
   return ids
 }
+
+export async function createManualMatch(txId1: string, txId2: string): Promise<void> {
+  const realmId = await requireRealmId()
+  const active = await db.transactionMatches
+    .filter(m => m.status !== 'rejected' &&
+      (m.txId1 === txId1 || m.txId1 === txId2 || m.txId2 === txId1 || m.txId2 === txId2))
+    .first()
+  if (active) throw new Error('Uma das transações já faz parte de outro match.')
+  await db.transactionMatches.add({
+    id: crypto.randomUUID(),
+    realmId,
+    txId1,
+    txId2,
+    status: 'approved',
+    createdAt: new Date(),
+  })
+  triggerSync()
+}

@@ -1,6 +1,7 @@
 import { db } from '@/db/db'
 import { startOfMonth, subMonths, endOfMonth } from 'date-fns'
 import type { Transaction, Category } from '@/db/schema'
+import { getApprovedMatchedTxIds } from '@/features/matches/useMatches'
 
 export interface Suggestion {
   id: string
@@ -17,11 +18,14 @@ export async function generateSuggestions(): Promise<Suggestion[]> {
   const lastMonthStart = startOfMonth(subMonths(now, 1))
   const lastMonthEnd = endOfMonth(subMonths(now, 1))
 
-  const [thisMonthTxs, lastMonthTxs, categories] = await Promise.all([
+  const [thisMonthAll, lastMonthAll, categories, excluded] = await Promise.all([
     db.transactions.where('date').between(thisMonthStart, thisMonthEnd).toArray(),
     db.transactions.where('date').between(lastMonthStart, lastMonthEnd).toArray(),
     db.categories.toArray(),
+    getApprovedMatchedTxIds(),
   ])
+  const thisMonthTxs = thisMonthAll.filter(t => !excluded.has(t.id!))
+  const lastMonthTxs = lastMonthAll.filter(t => !excluded.has(t.id!))
 
   const catMap = Object.fromEntries(categories.map(c => [c.id!, c])) as Record<number, Category>
   const suggestions: Suggestion[] = []

@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { Download, Eye, EyeOff, Save, Cloud, CloudOff, LogIn, LogOut, UserPlus, RefreshCw } from 'lucide-react'
 import type { SelectChangeEvent } from '@mui/material/Select'
 import { db, cloudEnabled } from '@/db/db'
+import { loadAIConfig, AI_CONFIG_KEY, type AIProvider, type AIProviderConfig } from '@/features/suggestions/ClaudeAdvisor'
 import { setSharedRealmId, resolveActiveRealmId } from '@/db/sharedRealm'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
@@ -80,7 +81,7 @@ function SyncStatusChip() {
 
 export function SettingsPage() {
   const profile = useLiveQuery(() => db.userProfile.get(1))
-  const [apiKey, setApiKey] = useState(localStorage.getItem('anthropic_api_key') ?? '')
+  const [aiConfig, setAiConfig] = useState<AIProviderConfig>(() => loadAIConfig())
   const [showKey, setShowKey] = useState(false)
   type ProfileDraft = { income: string; savingsPct: string; riskProfile: UserProfile['riskProfile'] }
   const [draft, setDraft] = useState<Partial<ProfileDraft>>({})
@@ -114,10 +115,13 @@ export function SettingsPage() {
     setTimeout(() => setSavedMsg(''), 2500)
   }
 
-  function saveApiKey() {
-    if (apiKey.trim()) localStorage.setItem('anthropic_api_key', apiKey.trim())
-    else localStorage.removeItem('anthropic_api_key')
-    flash('Chave salva!')
+  function saveAIConfig() {
+    localStorage.setItem(AI_CONFIG_KEY, JSON.stringify(aiConfig))
+    flash('Configuração de IA salva!')
+  }
+
+  function updateAIConfig(patch: Partial<AIProviderConfig>) {
+    setAiConfig(c => ({ ...c, ...patch }))
   }
 
   async function saveProfile() {
@@ -378,34 +382,116 @@ export function SettingsPage() {
         </Alert>
       )}
 
-      {/* API Key */}
+      {/* AI Configuration */}
       <Card>
         <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>Chave API Anthropic</Typography>
+          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>Configuração de IA</Typography>
           <Typography variant="body2" color="text.secondary">
-            Necessária para sugestões com IA. Armazenada apenas no seu navegador e enviada diretamente à API da Anthropic — sem servidores intermediários.
+            Escolha o provedor para sugestões com IA. Os dados são enviados apenas ao provedor selecionado — sem servidores intermediários.
           </Typography>
-          <TextField
-            size="small"
-            fullWidth
-            type={showKey ? 'text' : 'password'}
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder="sk-ant-..."
-            slotProps={{
-              input: {
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton size="small" onClick={() => setShowKey(v => !v)} edge="end">
-                      {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              },
-            }}
-          />
-          <Button variant="contained" startIcon={<Save size={14} />} onClick={saveApiKey} sx={{ alignSelf: 'flex-start' }}>
-            Salvar chave
+
+          <FormControl size="small" fullWidth>
+            <InputLabel>Provedor de IA</InputLabel>
+            <Select
+              label="Provedor de IA"
+              value={aiConfig.provider}
+              onChange={(e: SelectChangeEvent) => updateAIConfig({ provider: e.target.value as AIProvider })}
+            >
+              <MenuItem value="anthropic">Anthropic (Claude) — pago</MenuItem>
+              <MenuItem value="ollama">Ollama — gratuito, local</MenuItem>
+              <MenuItem value="openrouter">OpenRouter — gratuito (requer conta)</MenuItem>
+            </Select>
+          </FormControl>
+
+          {aiConfig.provider === 'anthropic' && (
+            <>
+              <Typography variant="body2" color="text.secondary">
+                Insira sua chave de API da Anthropic. Armazenada apenas no seu navegador.
+              </Typography>
+              <TextField
+                size="small"
+                fullWidth
+                type={showKey ? 'text' : 'password'}
+                value={aiConfig.anthropicKey ?? ''}
+                onChange={(e) => updateAIConfig({ anthropicKey: e.target.value })}
+                placeholder="sk-ant-..."
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <IconButton size="small" onClick={() => setShowKey(v => !v)} edge="end">
+                          {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </IconButton>
+                      </InputAdornment>
+                    ),
+                  },
+                }}
+              />
+            </>
+          )}
+
+          {aiConfig.provider === 'ollama' && (
+            <>
+              <Alert severity="info" sx={{ py: 0.5 }}>
+                Requer <strong>Ollama</strong> instalado e rodando localmente. Instale em <strong>ollama.com</strong>, depois execute: <code>ollama pull llama3.2</code>
+              </Alert>
+              <TextField
+                size="small"
+                fullWidth
+                label="Modelo"
+                value={aiConfig.ollamaModel ?? 'llama3.2'}
+                onChange={(e) => updateAIConfig({ ollamaModel: e.target.value })}
+                placeholder="llama3.2"
+              />
+              <TextField
+                size="small"
+                fullWidth
+                label="URL do servidor (opcional)"
+                value={aiConfig.ollamaUrl ?? ''}
+                onChange={(e) => updateAIConfig({ ollamaUrl: e.target.value })}
+                placeholder="http://localhost:11434"
+              />
+            </>
+          )}
+
+          {aiConfig.provider === 'openrouter' && (
+            <>
+              <Typography variant="body2" color="text.secondary">
+                Crie uma conta gratuita em <strong>openrouter.ai</strong> para obter sua chave de API. Modelos gratuitos disponíveis.
+              </Typography>
+              <TextField
+                size="small"
+                fullWidth
+                type={showKey ? 'text' : 'password'}
+                label="Chave API OpenRouter"
+                value={aiConfig.openrouterKey ?? ''}
+                onChange={(e) => updateAIConfig({ openrouterKey: e.target.value })}
+                placeholder="sk-or-..."
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <IconButton size="small" onClick={() => setShowKey(v => !v)} edge="end">
+                          {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </IconButton>
+                      </InputAdornment>
+                    ),
+                  },
+                }}
+              />
+              <TextField
+                size="small"
+                fullWidth
+                label="Modelo (opcional)"
+                value={aiConfig.openrouterModel ?? ''}
+                onChange={(e) => updateAIConfig({ openrouterModel: e.target.value })}
+                placeholder="meta-llama/llama-3.1-8b-instruct:free"
+              />
+            </>
+          )}
+
+          <Button variant="contained" startIcon={<Save size={14} />} onClick={saveAIConfig} sx={{ alignSelf: 'flex-start' }}>
+            Salvar configuração
           </Button>
         </CardContent>
       </Card>

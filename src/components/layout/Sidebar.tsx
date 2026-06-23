@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, ArrowDownUp, Upload, Tag, Lightbulb,
-  GitMerge, Settings, ChevronLeft, ChevronRight,
+  Settings, ChevronLeft, ChevronRight,
 } from 'lucide-react'
 import Box from '@mui/material/Box'
 import Drawer from '@mui/material/Drawer'
@@ -24,7 +24,6 @@ const navItems = [
   { to: '/import', label: 'Importar', icon: Upload },
   { to: '/categories', label: 'Categorias', icon: Tag },
   { to: '/suggestions', label: 'Sugestões', icon: Lightbulb },
-  { to: '/matches', label: 'Matches', icon: GitMerge },
   { to: '/settings', label: 'Configurações', icon: Settings },
 ]
 

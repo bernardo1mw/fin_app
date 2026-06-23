@@ -2,6 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { db, triggerSync } from '@/db/db'
 import { upsertRuleForTransaction } from '@/features/categories/useCategorization'
 import { resolveCanonicalCategoryId } from '@/db/sharedRealm'
+import { getApprovedMatchedTxIds } from '@/features/matches/useMatches'
 import type { Transaction } from '@/db/schema'
 
 export interface TransactionFilter {
@@ -15,11 +16,14 @@ export interface TransactionFilter {
   type?: 'income' | 'expense'
 }
 
-export function useTransactions(filter?: TransactionFilter) {
+export function useTransactions(filter?: TransactionFilter, hideMatched = false) {
   const transactions = useLiveQuery(async () => {
     const all = await db.transactions.orderBy('date').reverse().toArray()
-    if (!filter) return all
+    const excluded = hideMatched ? await getApprovedMatchedTxIds() : new Set<string>()
+
     return all.filter(t => {
+      if (excluded.has(t.id!)) return false
+      if (!filter) return true
       if (filter.categoryId !== undefined) {
         if (filter.categoryId === '__none__' ? t.categoryId !== null : t.categoryId !== filter.categoryId) return false
       }
@@ -35,6 +39,7 @@ export function useTransactions(filter?: TransactionFilter) {
       return true
     })
   }, [
+    hideMatched,
     filter?.categoryId, filter?.accountId,
     filter?.dateFrom?.getTime(), filter?.dateTo?.getTime(),
     filter?.payeeSearch, filter?.amountMin, filter?.amountMax, filter?.type,

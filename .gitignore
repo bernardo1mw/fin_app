@@ -27,3 +27,10 @@ dist-ssr
 *.sln
 *.sw?
 plans/
+
+# Local scripts / dev files
+count_senders.cjs
+docker-compose.yml
+test.js
+.env
+takeout-*/
