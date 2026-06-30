@@ -679,7 +679,7 @@ async function callOpenAICompatible(
   return result.choices?.[0]?.message?.content ?? '{}'
 }
 
-async function callGemini(apiKey: string, model: string, userPrompt: string, externalSignal?: AbortSignal, maxTokens = 4096): Promise<string> {
+async function callGemini(apiKey: string, model: string, userPrompt: string, externalSignal?: AbortSignal, maxTokens = 8192): Promise<string> {
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
     {
@@ -692,6 +692,7 @@ async function callGemini(apiKey: string, model: string, userPrompt: string, ext
         generationConfig: {
           response_mime_type: 'application/json',
           maxOutputTokens: maxTokens,
+          thinkingConfig: { thinkingBudget: 0 },
         },
       }),
     }
