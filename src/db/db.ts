@@ -53,6 +53,12 @@ class FinanceDB extends Dexie {
 export const db = new FinanceDB()
 export const cloudEnabled = !!CLOUD_URL
 
+// One-time cleanup: remove 'unauthorized' placeholder stored by earlier bug
+db.on('ready', async () => {
+  await db.transactions.filter(tx => tx.owner === 'unauthorized').modify({ owner: null })
+  await db.importBatches.filter(b => b.owner === 'unauthorized').modify({ owner: null })
+})
+
 export function triggerSync(): void {
   if (!cloudEnabled) return
   db.cloud.sync().catch(() => {})
