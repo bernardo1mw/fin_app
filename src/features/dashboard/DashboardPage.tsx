@@ -113,8 +113,8 @@ export function DashboardPage() {
             {!spendingByCategory?.length
               ? <EmptyState label="Nenhum gasto categorizado neste período" />
               : (
-                <ResponsiveContainer width="100%" height={260}>
-                  <PieChart>
+                <ResponsiveContainer width="100%" height={280}>
+                  <PieChart margin={{ top: 20, right: 20, bottom: 10, left: 20 }}>
                     <Pie
                       data={spendingByCategory}
                       dataKey="value"
