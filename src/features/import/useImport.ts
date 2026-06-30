@@ -90,7 +90,7 @@ export function useImport() {
     }
   }
 
-  async function confirmImport(p: ParsedPreview, selectedFitIds: Set<string>): Promise<ImportResult> {
+  async function confirmImport(p: ParsedPreview, selectedFitIds: Set<string>, owner?: string | null): Promise<ImportResult> {
     setLoading(true)
     const importBatchId = crypto.randomUUID()
     const res: ImportResult = { imported: 0, skipped: 0, categorized: 0, importBatchId, errors: [] }
@@ -107,6 +107,7 @@ export function useImport() {
             accountId: p.accountId,
             realmId: p.realmId,
             importId: importBatchId,
+            owner: owner?.trim() || null,
           }))
         )
       }

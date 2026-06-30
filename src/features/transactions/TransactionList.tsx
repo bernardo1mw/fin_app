@@ -61,14 +61,21 @@ export function TransactionList() {
   const [tab, setTab] = useState(0)
   const [matchError, setMatchError] = useState<string | null>(null)
   const [matchLoading, setMatchLoading] = useState(false)
+  const [editingOwnerId, setEditingOwnerId] = useState<string | null>(null)
+  const [ownerDraft, setOwnerDraft] = useState('')
 
   function updateFilters(updater: (f: TransactionFilter) => TransactionFilter) {
     setFilters(updater)
     setPage(0)
   }
 
-  const { transactions, categories, accounts, setCategory, setCategoryAllByPayee, setCategoryBulk, countSamePayee, deleteTransaction, deleteTransactionsBulk } =
+  const { transactions, categories, accounts, setCategory, setCategoryAllByPayee, setCategoryBulk, countSamePayee, deleteTransaction, deleteTransactionsBulk, setOwner } =
     useTransactions(filters, true)
+
+  async function saveOwner(txId: string) {
+    await setOwner(txId, ownerDraft.trim() || null)
+    setEditingOwnerId(null)
+  }
 
   function handleTabChange(_: React.SyntheticEvent, newTab: number) {
     setTab(newTab)
@@ -406,6 +413,7 @@ export function TransactionList() {
                 <TableCell sx={{ color: 'text.secondary', fontWeight: 500, bgcolor: 'background.paper', backgroundImage: 'linear-gradient(rgba(0,0,0,0.06) 0%, rgba(0,0,0,0.06) 100%)', minWidth: 160 }}>Descrição</TableCell>
                 <TableCell align="right" sx={{ color: 'text.secondary', fontWeight: 500, bgcolor: 'background.paper', backgroundImage: 'linear-gradient(rgba(0,0,0,0.06) 0%, rgba(0,0,0,0.06) 100%)', whiteSpace: 'nowrap' }}>Valor</TableCell>
                 <TableCell sx={{ color: 'text.secondary', fontWeight: 500, bgcolor: 'background.paper', backgroundImage: 'linear-gradient(rgba(0,0,0,0.06) 0%, rgba(0,0,0,0.06) 100%)' }}>Categoria</TableCell>
+                <TableCell sx={{ color: 'text.secondary', fontWeight: 500, bgcolor: 'background.paper', backgroundImage: 'linear-gradient(rgba(0,0,0,0.06) 0%, rgba(0,0,0,0.06) 100%)', minWidth: 90 }}>Responsável</TableCell>
                 <TableCell sx={{ width: 40, bgcolor: 'background.paper', backgroundImage: 'linear-gradient(rgba(0,0,0,0.06) 0%, rgba(0,0,0,0.06) 100%)' }} />
               </TableRow>
             </TableHead>
@@ -469,6 +477,31 @@ export function TransactionList() {
                         categories={categories}
                         onChange={catId => handleCategoryChange(tx, catId)}
                       />
+                    </TableCell>
+                    <TableCell onClick={e => e.stopPropagation()} sx={{ minWidth: 90 }}>
+                      {editingOwnerId === tx.id ? (
+                        <TextField
+                          autoFocus
+                          size="small"
+                          value={ownerDraft}
+                          onChange={e => setOwnerDraft(e.target.value)}
+                          onBlur={() => saveOwner(tx.id!)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') saveOwner(tx.id!)
+                            if (e.key === 'Escape') setEditingOwnerId(null)
+                          }}
+                          sx={{ width: 90 }}
+                          slotProps={{ input: { sx: { fontSize: 12, py: 0.5 } } }}
+                        />
+                      ) : (
+                        <Typography
+                          variant="caption"
+                          onClick={() => { setEditingOwnerId(tx.id!); setOwnerDraft(tx.owner ?? '') }}
+                          sx={{ cursor: 'pointer', color: tx.owner ? 'text.primary' : 'text.disabled', '&:hover': { textDecoration: 'underline' } }}
+                        >
+                          {tx.owner || '—'}
+                        </Typography>
+                      )}
                     </TableCell>
                     <TableCell padding="none" onClick={e => e.stopPropagation()} sx={{ width: 40 }}>
                       <Tooltip title="Excluir">

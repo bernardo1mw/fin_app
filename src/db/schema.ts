@@ -16,6 +16,7 @@ export interface Transaction {
   trnType: string
   currency: string
   importId?: string | null
+  owner?: string | null
 }
 
 export interface ImportBatch {

@@ -86,5 +86,10 @@ export function useTransactions(filter?: TransactionFilter, hideMatched = false)
     triggerSync()
   }
 
-  return { transactions, categories, accounts, setCategory, setCategoryAllByPayee, setCategoryBulk, countSamePayee, deleteTransaction, deleteTransactionsBulk }
+  async function setOwner(txId: string, owner: string | null) {
+    await db.transactions.update(txId, { owner })
+    triggerSync()
+  }
+
+  return { transactions, categories, accounts, setCategory, setCategoryAllByPayee, setCategoryBulk, countSamePayee, deleteTransaction, deleteTransactionsBulk, setOwner }
 }

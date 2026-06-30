@@ -1,6 +1,6 @@
 import { useRef, useState, useCallback } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Upload, CheckCircle, AlertCircle, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react'
+import { Upload, CheckCircle, AlertCircle, ChevronLeft, ChevronRight, Trash2, Pencil, Check } from 'lucide-react'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import Box from '@mui/material/Box'
@@ -20,13 +20,14 @@ import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
 import Paper from '@mui/material/Paper'
 import CircularProgress from '@mui/material/CircularProgress'
+import TextField from '@mui/material/TextField'
 import Tooltip from '@mui/material/Tooltip'
 import IconButton from '@mui/material/IconButton'
 import Dialog from '@mui/material/Dialog'
 import DialogTitle from '@mui/material/DialogTitle'
 import DialogContent from '@mui/material/DialogContent'
 import DialogActions from '@mui/material/DialogActions'
-import { db } from '@/db/db'
+import { db, triggerSync } from '@/db/db'
 import { useImport, isValidRow, type PreviewRow, type ParsedPreview } from './useImport'
 
 const PAGE_SIZE = 15
@@ -39,6 +40,15 @@ export function ImportPage() {
   const [tab, setTab] = useState(0)
   const [page, setPage] = useState(0)
   const [confirmUndo, setConfirmUndo] = useState<string | null>(null)
+  const [owner, setOwner] = useState('')
+  const [editingBatchId, setEditingBatchId] = useState<string | null>(null)
+  const [batchOwnerDraft, setBatchOwnerDraft] = useState('')
+
+  async function saveBatchOwner(batchId: string) {
+    await db.transactions.where('importId').equals(batchId).modify({ owner: batchOwnerDraft.trim() || null })
+    triggerSync()
+    setEditingBatchId(null)
+  }
 
   const categories = useLiveQuery(() => db.categories.toArray())
   const importBatches = useLiveQuery(() => db.importBatches.orderBy('importedAt').reverse().toArray())
@@ -66,7 +76,7 @@ export function ImportPage() {
 
   async function handleConfirm() {
     if (!preview) return
-    await confirmImport(preview, selected)
+    await confirmImport(preview, selected, owner)
     setSelected(new Set())
     setPage(0)
     setTab(0)
@@ -162,6 +172,8 @@ export function ImportPage() {
           allPageSelected={allPageSelected}
           somePageSelected={somePageSelected}
           catMap={catMap}
+          owner={owner}
+          onOwnerChange={setOwner}
           onTabChange={(v) => { setTab(v); setPage(0) }}
           onPageChange={setPage}
           onToggleRow={toggleRow}
@@ -201,6 +213,7 @@ export function ImportPage() {
                   <TableCell>Arquivo</TableCell>
                   <TableCell>Data</TableCell>
                   <TableCell align="right">Transações</TableCell>
+                  <TableCell>Responsável</TableCell>
                   <TableCell padding="none" sx={{ width: 48 }} />
                 </TableRow>
               </TableHead>
@@ -212,6 +225,37 @@ export function ImportPage() {
                       {format(batch.importedAt, "dd/MM/yyyy HH:mm", { locale: ptBR })}
                     </TableCell>
                     <TableCell align="right" sx={{ fontSize: 13 }}>{batch.transactionCount}</TableCell>
+                    <TableCell sx={{ fontSize: 13 }}>
+                      {editingBatchId === batch.id ? (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          <TextField
+                            autoFocus
+                            size="small"
+                            value={batchOwnerDraft}
+                            onChange={e => setBatchOwnerDraft(e.target.value)}
+                            onBlur={() => saveBatchOwner(batch.id)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') saveBatchOwner(batch.id)
+                              if (e.key === 'Escape') setEditingBatchId(null)
+                            }}
+                            placeholder="Responsável"
+                            sx={{ width: 130 }}
+                            slotProps={{ input: { sx: { fontSize: 12, py: 0.5 } } }}
+                          />
+                          <IconButton size="small" onMouseDown={() => saveBatchOwner(batch.id)}>
+                            <Check size={13} />
+                          </IconButton>
+                        </Box>
+                      ) : (
+                        <Box
+                          sx={{ display: 'flex', alignItems: 'center', gap: 0.5, cursor: 'pointer', '&:hover .edit-icon': { opacity: 1 } }}
+                          onClick={() => { setEditingBatchId(batch.id); setBatchOwnerDraft('') }}
+                        >
+                          <Typography variant="caption" color="text.secondary">—</Typography>
+                          <Pencil size={11} className="edit-icon" style={{ opacity: 0, transition: 'opacity 0.15s' }} />
+                        </Box>
+                      )}
+                    </TableCell>
                     <TableCell padding="none">
                       <Tooltip title="Desfazer importação">
                         <IconButton size="small" color="error" onClick={() => setConfirmUndo(batch.id)}>
@@ -255,6 +299,8 @@ interface ReviewPanelProps {
   allPageSelected: boolean
   somePageSelected: boolean
   catMap: Record<string, string>
+  owner: string
+  onOwnerChange: (v: string) => void
   onTabChange: (v: number) => void
   onPageChange: (fn: (p: number) => number) => void
   onToggleRow: (fitId: string) => void
@@ -267,6 +313,7 @@ interface ReviewPanelProps {
 function ReviewPanel({
   preview, selected, tab, page, rows, pageRows, totalPages,
   allPageSelected, somePageSelected, catMap,
+  owner, onOwnerChange,
   onTabChange, onPageChange, onToggleRow, onToggleAll,
   onSelectAll, onDeselectAll, onConfirm,
 }: ReviewPanelProps) {
@@ -283,7 +330,7 @@ function ReviewPanel({
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, maxWidth: 760 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
+      <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
         <Box>
           <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
             Revisar transações
@@ -294,14 +341,24 @@ function ReviewPanel({
             </Typography>
           )}
         </Box>
-        <Button
-          variant="contained"
-          size="small"
-          disabled={selected.size === 0}
-          onClick={onConfirm}
-        >
-          Importar {selected.size > 0 ? `(${selected.size})` : ''}
-        </Button>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <TextField
+            size="small"
+            label="Responsável (opcional)"
+            value={owner}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => onOwnerChange(e.target.value)}
+            placeholder="Ex: Bernardo"
+            sx={{ width: 180 }}
+          />
+          <Button
+            variant="contained"
+            size="small"
+            disabled={selected.size === 0}
+            onClick={onConfirm}
+          >
+            Importar {selected.size > 0 ? `(${selected.size})` : ''}
+          </Button>
+        </Box>
       </Box>
 
       <Tabs value={tab} onChange={(_, v: number) => onTabChange(v)} sx={{ borderBottom: 1, borderColor: 'divider' }}>
