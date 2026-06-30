@@ -380,7 +380,11 @@ export function TransactionList() {
         <Typography variant="body2" color="text.secondary">
           Nenhuma transação encontrada.
         </Typography>
-      ) : (
+      ) : (() => {
+        const totalIncome = transactions.reduce((s, t) => t.amount > 0 ? s + t.amount : s, 0)
+        const totalExpense = transactions.reduce((s, t) => t.amount < 0 ? s + Math.abs(t.amount) : s, 0)
+        const fmtBRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })
+        return (
         <>
         <TableContainer
           component={Paper}
@@ -495,8 +499,23 @@ export function TransactionList() {
           labelDisplayedRows={({ from, to, count }) => `${from}–${to} de ${count}`}
           sx={{ flexShrink: 0, borderTop: 1, borderColor: 'divider' }}
         />
+        <Box sx={{ display: 'flex', gap: 3, px: 1, py: 1, borderTop: 1, borderColor: 'divider', flexShrink: 0 }}>
+          <Typography variant="caption" color="text.secondary">
+            {transactions.length} transaç{transactions.length !== 1 ? 'ões' : 'ão'}
+          </Typography>
+          <Typography variant="caption" sx={{ color: 'success.main', fontWeight: 600 }}>
+            Entradas: {fmtBRL.format(totalIncome)}
+          </Typography>
+          <Typography variant="caption" sx={{ color: 'text.primary', fontWeight: 600 }}>
+            Saídas: {fmtBRL.format(totalExpense)}
+          </Typography>
+          <Typography variant="caption" sx={{ color: totalIncome - totalExpense >= 0 ? 'success.main' : 'error.main', fontWeight: 600 }}>
+            Saldo: {fmtBRL.format(totalIncome - totalExpense)}
+          </Typography>
+        </Box>
         </>
-      )}
+        )
+      })()}
 
       {/* Same-payee category dialog */}
       <Dialog open={pending !== null} onClose={() => setPending(null)} maxWidth="xs" fullWidth>

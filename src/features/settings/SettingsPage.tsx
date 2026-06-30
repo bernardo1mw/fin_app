@@ -398,6 +398,7 @@ export function SettingsPage() {
               onChange={(e: SelectChangeEvent) => updateAIConfig({ provider: e.target.value as AIProvider })}
             >
               <MenuItem value="anthropic">Anthropic (Claude) — pago</MenuItem>
+              <MenuItem value="gemini">Google Gemini — pago</MenuItem>
               <MenuItem value="ollama">Ollama — gratuito, local</MenuItem>
               <MenuItem value="openrouter">OpenRouter — gratuito (requer conta)</MenuItem>
             </Select>
@@ -426,6 +427,42 @@ export function SettingsPage() {
                     ),
                   },
                 }}
+              />
+            </>
+          )}
+
+          {aiConfig.provider === 'gemini' && (
+            <>
+              <Typography variant="body2" color="text.secondary">
+                Insira sua chave de API do Google Gemini. Armazenada apenas no seu navegador.
+              </Typography>
+              <TextField
+                size="small"
+                fullWidth
+                type={showKey ? 'text' : 'password'}
+                label="Chave API Gemini"
+                value={aiConfig.geminiKey ?? ''}
+                onChange={(e) => updateAIConfig({ geminiKey: e.target.value })}
+                placeholder="AIza..."
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <IconButton size="small" onClick={() => setShowKey(v => !v)} edge="end">
+                          {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </IconButton>
+                      </InputAdornment>
+                    ),
+                  },
+                }}
+              />
+              <TextField
+                size="small"
+                fullWidth
+                label="Modelo (opcional)"
+                value={aiConfig.geminiModel ?? ''}
+                onChange={(e) => updateAIConfig({ geminiModel: e.target.value })}
+                placeholder="gemini-2.5-flash"
               />
             </>
           )}

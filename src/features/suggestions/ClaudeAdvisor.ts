@@ -34,7 +34,7 @@ export interface AICategorization {
   amount: number
 }
 
-export type AIProvider = 'anthropic' | 'ollama' | 'openrouter'
+export type AIProvider = 'anthropic' | 'ollama' | 'openrouter' | 'gemini'
 
 export interface AIProviderConfig {
   provider: AIProvider
@@ -43,6 +43,8 @@ export interface AIProviderConfig {
   ollamaModel?: string
   openrouterKey?: string
   openrouterModel?: string
+  geminiKey?: string
+  geminiModel?: string
 }
 
 export const AI_CONFIG_KEY = 'ai_provider_config'
@@ -61,6 +63,7 @@ export function isAIConfigured(config: AIProviderConfig): boolean {
   if (config.provider === 'anthropic') return !!config.anthropicKey
   if (config.provider === 'ollama') return true
   if (config.provider === 'openrouter') return !!config.openrouterKey
+  if (config.provider === 'gemini') return !!config.geminiKey
   return false
 }
 
@@ -668,6 +671,28 @@ async function callOpenAICompatible(
   return result.choices?.[0]?.message?.content ?? '{}'
 }
 
+async function callGemini(apiKey: string, model: string, userPrompt: string, externalSignal?: AbortSignal, maxTokens = 4096): Promise<string> {
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+    {
+      method: 'POST',
+      signal: buildRequestSignal(90_000, externalSignal),
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
+        contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+        generationConfig: {
+          response_mime_type: 'application/json',
+          maxOutputTokens: maxTokens,
+        },
+      }),
+    }
+  )
+  if (!response.ok) throw new Error(`API error ${response.status}: ${await response.text()}`)
+  const result = await response.json()
+  return result.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}'
+}
+
 async function callProvider(config: AIProviderConfig, prompt: string, externalSignal?: AbortSignal, maxTokens = 4096): Promise<string> {
   if (config.provider === 'anthropic') {
     if (!config.anthropicKey) throw new Error('Chave API Anthropic não configurada')
@@ -681,6 +706,11 @@ async function callProvider(config: AIProviderConfig, prompt: string, externalSi
     if (!config.openrouterKey) throw new Error('Chave API OpenRouter não configurada')
     const model = config.openrouterModel || 'meta-llama/llama-3.1-8b-instruct:free'
     return callOpenAICompatible('https://openrouter.ai/api', config.openrouterKey, model, prompt, 90_000, true, externalSignal, maxTokens)
+  }
+  if (config.provider === 'gemini') {
+    if (!config.geminiKey) throw new Error('Chave API Gemini não configurada')
+    const model = config.geminiModel || 'gemini-2.5-flash'
+    return callGemini(config.geminiKey, model, prompt, externalSignal, maxTokens)
   }
   throw new Error('Provedor de IA desconhecido')
 }
