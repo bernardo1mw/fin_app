@@ -38,7 +38,7 @@ import type { TransactionFilter } from './useTransactions'
 import { AddTransactionDialog } from './AddTransactionDialog'
 import { MatchesPage } from '@/features/matches/MatchesPage'
 import { createManualMatch } from '@/features/matches/useMatches'
-import { OwnerSelect, ownerDisplay } from '@/components/OwnerSelect'
+import { OwnerSelect, ownerDisplay, useDistinctOwners } from '@/components/OwnerSelect'
 import type { Transaction } from '@/db/schema'
 
 interface PendingChange {
@@ -71,6 +71,7 @@ export function TransactionList() {
 
   const { transactions, categories, accounts, setCategory, setCategoryAllByPayee, setCategoryBulk, countSamePayee, deleteTransaction, deleteTransactionsBulk, setOwner } =
     useTransactions(filters, true)
+  const distinctOwners = useDistinctOwners()
 
   async function saveOwner(txId: string, newOwner: string) {
     await setOwner(txId, newOwner.trim() || null)
@@ -289,6 +290,24 @@ export function TransactionList() {
                   <MenuItem value=""><em>Todas</em></MenuItem>
                   {accounts!.map(a => (
                     <MenuItem key={a.id} value={a.id!}>{a.bankName || a.acctId}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            )}
+            {distinctOwners.length > 0 && (
+              <FormControl size="small" sx={{ minWidth: 140 }}>
+                <InputLabel>Responsável</InputLabel>
+                <Select
+                  label="Responsável"
+                  value={filters.owner ?? ''}
+                  onChange={(e: SelectChangeEvent<string>) =>
+                    updateFilters(f => ({ ...f, owner: (e.target.value as TransactionFilter['owner']) || undefined }))
+                  }
+                >
+                  <MenuItem value=""><em>Todos</em></MenuItem>
+                  <MenuItem value="__none__"><em>Sem responsável</em></MenuItem>
+                  {distinctOwners.map(o => (
+                    <MenuItem key={o} value={o}>{ownerDisplay(o)}</MenuItem>
                   ))}
                 </Select>
               </FormControl>

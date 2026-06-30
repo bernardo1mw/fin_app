@@ -1,11 +1,7 @@
-import { useState, useSyncExternalStore } from 'react'
+import { useRef, useState, useSyncExternalStore } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Check } from 'lucide-react'
-import MuiSelect from '@mui/material/Select'
-import MenuItem from '@mui/material/MenuItem'
+import Autocomplete from '@mui/material/Autocomplete'
 import TextField from '@mui/material/TextField'
-import IconButton from '@mui/material/IconButton'
-import Box from '@mui/material/Box'
 import { db, cloudEnabled } from '@/db/db'
 
 export function useRealmMembers(): string[] {
@@ -25,7 +21,6 @@ export function useRealmMembers(): string[] {
     },
   )
 
-  // useLiveQuery returns undefined while loading; catch ensures no error propagates
   const members = useLiveQuery(async () => {
     if (!cloudEnabled) return []
     try {
@@ -42,71 +37,85 @@ export function useRealmMembers(): string[] {
   return [...emails].sort()
 }
 
+// Distinct owner values that exist in transactions (for filter dropdowns)
+export function useDistinctOwners(): string[] {
+  const owners = useLiveQuery(async () => {
+    const all = await db.transactions.toArray()
+    const set = new Set<string>()
+    all.forEach(t => { if (t.owner && t.owner !== 'unauthorized') set.add(t.owner) })
+    return [...set]
+  }, [])
+  return Array.isArray(owners)
+    ? owners.sort((a, b) => ownerDisplay(a).localeCompare(ownerDisplay(b), 'pt-BR'))
+    : []
+}
+
 export function ownerDisplay(email: string | null | undefined): string {
   if (!email) return '—'
   const at = email.indexOf('@')
   return at > 0 ? email.slice(0, at) : email
 }
 
-// Inline-editing widget: auto-opens Select on mount; for the fallback TextField
-// shows an explicit save (✓) button since blur-to-save is not obvious.
 interface OwnerSelectProps {
   value: string
   onChange: (v: string) => void
   onClose: () => void
 }
 
+// Inline-editing widget: always a dropdown (freeSolo Autocomplete).
+// Saves on selection, Enter, or blur. Cancels on Escape.
 export function OwnerSelect({ value, onChange, onClose }: OwnerSelectProps) {
   const members = useRealmMembers()
-  const [open, setOpen] = useState(true)
-  const [draft, setDraft] = useState(value)
+  const savedRef = useRef(false)
+  const cancelledRef = useRef(false)
 
-  if (members.length === 0) {
-    return (
-      <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
-        <TextField
-          autoFocus
-          size="small"
-          value={draft}
-          onChange={e => setDraft(e.target.value)}
-          onBlur={() => { onChange(draft); onClose() }}
-          onKeyDown={e => {
-            if (e.key === 'Enter') { onChange(draft); onClose() }
-            if (e.key === 'Escape') onClose()
-          }}
-          placeholder="Responsável"
-          sx={{ width: 110 }}
-          slotProps={{ input: { sx: { fontSize: 12, py: 0.5 } } }}
-        />
-        <IconButton
-          size="small"
-          onMouseDown={e => e.preventDefault()}
-          onClick={() => { onChange(draft); onClose() }}
-          sx={{ p: 0.5 }}
-        >
-          <Check size={14} />
-        </IconButton>
-      </Box>
-    )
+  // Show the display name in the input box (part before @), not the raw email
+  const [inputValue, setInputValue] = useState(() => {
+    if (!value) return ''
+    const at = value.indexOf('@')
+    return at > 0 ? value.slice(0, at) : value
+  })
+
+  function save(raw: string) {
+    if (savedRef.current || cancelledRef.current) return
+    savedRef.current = true
+    const trimmed = raw.trim()
+    // Prefer full email if typed display name matches a member
+    const match = members.find(m => m === trimmed || ownerDisplay(m) === trimmed)
+    onChange(match ?? trimmed)
+    onClose()
   }
 
   return (
-    <MuiSelect
+    <Autocomplete
+      freeSolo
       size="small"
-      value={value}
-      open={open}
-      onOpen={() => setOpen(true)}
-      onClose={() => { setOpen(false); onClose() }}
-      onChange={e => onChange(e.target.value as string)}
-      displayEmpty
-      sx={{ fontSize: 12, minWidth: 130 }}
-    >
-      <MenuItem value="" sx={{ fontSize: 12 }}><em>Sem responsável</em></MenuItem>
-      {members.map(email => (
-        <MenuItem key={email} value={email} sx={{ fontSize: 12 }}>
-          {ownerDisplay(email)}
-        </MenuItem>
-      ))}
-    </MuiSelect>
+      options={members}
+      getOptionLabel={ownerDisplay}
+      inputValue={inputValue}
+      onInputChange={(_, v) => setInputValue(v)}
+      onChange={(_, newValue) => {
+        if (newValue === null) { save(''); return }
+        save(typeof newValue === 'string' ? newValue : (newValue as string))
+      }}
+      onBlur={() => save(inputValue)}
+      openOnFocus
+      renderInput={params => (
+        <TextField
+          {...params}
+          autoFocus
+          size="small"
+          placeholder="Responsável"
+          onKeyDown={e => {
+            if (e.key === 'Escape') {
+              cancelledRef.current = true
+              e.stopPropagation()
+              onClose()
+            }
+          }}
+        />
+      )}
+      sx={{ width: 150 }}
+    />
   )
 }

@@ -21,10 +21,7 @@ import TableRow from '@mui/material/TableRow'
 import Paper from '@mui/material/Paper'
 import CircularProgress from '@mui/material/CircularProgress'
 import TextField from '@mui/material/TextField'
-import Select from '@mui/material/Select'
-import MenuItem from '@mui/material/MenuItem'
-import FormControl from '@mui/material/FormControl'
-import InputLabel from '@mui/material/InputLabel'
+import Autocomplete from '@mui/material/Autocomplete'
 import Tooltip from '@mui/material/Tooltip'
 import IconButton from '@mui/material/IconButton'
 import Dialog from '@mui/material/Dialog'
@@ -312,6 +309,7 @@ function ReviewPanel({
   onSelectAll, onDeselectAll, onConfirm,
 }: ReviewPanelProps) {
   const members = useRealmMembers()
+  const ownerInputDisplay = owner ? (owner.includes('@') ? owner.slice(0, owner.indexOf('@')) : owner) : ''
   if (preview.parseError) {
     return (
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -337,31 +335,26 @@ function ReviewPanel({
           )}
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          {members.length > 0 ? (
-            <FormControl size="small" sx={{ width: 180 }}>
-              <InputLabel>Responsável</InputLabel>
-              <Select
-                label="Responsável"
-                value={owner}
-                onChange={e => onOwnerChange(e.target.value as string)}
-                displayEmpty
-              >
-                <MenuItem value=""><em>Nenhum</em></MenuItem>
-                {members.map(email => (
-                  <MenuItem key={email} value={email}>{ownerDisplay(email)}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          ) : (
-            <TextField
-              size="small"
-              label="Responsável (opcional)"
-              value={owner}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => onOwnerChange(e.target.value)}
-              placeholder="Ex: Bernardo"
-              sx={{ width: 180 }}
-            />
-          )}
+          <Autocomplete
+            freeSolo
+            size="small"
+            options={members}
+            getOptionLabel={ownerDisplay}
+            inputValue={ownerInputDisplay}
+            onInputChange={(_, v) => {
+              const match = members.find(m => ownerDisplay(m) === v || m === v)
+              onOwnerChange(match ?? v)
+            }}
+            onChange={(_, newValue) => {
+              if (newValue === null) { onOwnerChange(''); return }
+              const val = typeof newValue === 'string' ? newValue : (newValue as string)
+              const match = members.find(m => m === val || ownerDisplay(m) === val)
+              onOwnerChange(match ?? val)
+            }}
+            renderInput={params => (
+              <TextField {...params} size="small" label="Responsável (opcional)" sx={{ width: 180 }} />
+            )}
+          />
           <Button
             variant="contained"
             size="small"

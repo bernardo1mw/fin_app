@@ -12,11 +12,16 @@ import Typography from '@mui/material/Typography'
 import Paper from '@mui/material/Paper'
 import IconButton from '@mui/material/IconButton'
 import Button from '@mui/material/Button'
+import FormControl from '@mui/material/FormControl'
+import InputLabel from '@mui/material/InputLabel'
+import Select from '@mui/material/Select'
+import MenuItem from '@mui/material/MenuItem'
 import { useTheme } from '@mui/material/styles'
 import useMediaQuery from '@mui/material/useMediaQuery'
 import { startOfMonth, addMonths, subMonths, format, isSameMonth } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { useDashboardData } from './useDashboardData'
+import { useDistinctOwners, ownerDisplay } from '@/components/OwnerSelect'
 
 const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
 const fmtShort = (v: number) => {
@@ -28,7 +33,9 @@ const fmtShort = (v: number) => {
 export function DashboardPage() {
   // null = all time
   const [selectedMonth, setSelectedMonth] = useState<Date | null>(() => startOfMonth(new Date()))
-  const { spendingByCategory, monthlyCashFlow, netWorthPoints, summary } = useDashboardData(selectedMonth)
+  const [ownerFilter, setOwnerFilter] = useState<string | '__none__' | undefined>(undefined)
+  const { spendingByCategory, monthlyCashFlow, netWorthPoints, summary } = useDashboardData(selectedMonth, ownerFilter)
+  const distinctOwners = useDistinctOwners()
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
 
@@ -38,8 +45,24 @@ export function DashboardPage() {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
         <Typography variant="h5" sx={{ fontWeight: 700, flexGrow: 1 }}>Dashboard</Typography>
+        {distinctOwners.length > 0 && (
+          <FormControl size="small" sx={{ minWidth: 130 }}>
+            <InputLabel>Responsável</InputLabel>
+            <Select
+              label="Responsável"
+              value={ownerFilter ?? ''}
+              onChange={e => setOwnerFilter((e.target.value as typeof ownerFilter) || undefined)}
+            >
+              <MenuItem value=""><em>Todos</em></MenuItem>
+              <MenuItem value="__none__"><em>Sem responsável</em></MenuItem>
+              {distinctOwners.map(o => (
+                <MenuItem key={o} value={o}>{ownerDisplay(o)}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        )}
         <Button
           size="small"
           variant={allTime ? 'contained' : 'outlined'}

@@ -14,6 +14,7 @@ export interface TransactionFilter {
   amountMin?: number
   amountMax?: number
   type?: 'income' | 'expense'
+  owner?: string | '__none__'
 }
 
 export function useTransactions(filter?: TransactionFilter, hideMatched = false) {
@@ -36,13 +37,15 @@ export function useTransactions(filter?: TransactionFilter, hideMatched = false)
       if (filter.amountMax !== undefined && Math.abs(t.amount) > filter.amountMax) return false
       if (filter.type === 'income' && t.amount <= 0) return false
       if (filter.type === 'expense' && t.amount >= 0) return false
+      if (filter.owner === '__none__' && t.owner) return false
+      if (filter.owner && filter.owner !== '__none__' && t.owner !== filter.owner) return false
       return true
     })
   }, [
     hideMatched,
     filter?.categoryId, filter?.accountId,
     filter?.dateFrom?.getTime(), filter?.dateTo?.getTime(),
-    filter?.payeeSearch, filter?.amountMin, filter?.amountMax, filter?.type,
+    filter?.payeeSearch, filter?.amountMin, filter?.amountMax, filter?.type, filter?.owner,
   ])
 
   const categories = useLiveQuery(async () => {
