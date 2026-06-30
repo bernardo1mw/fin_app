@@ -30,14 +30,14 @@ export function useRealmMembers(): string[] {
     if (!cloudEnabled) return []
     try {
       const all: Array<{ email?: string }> = await db.table('members').toArray()
-      return all.filter(m => !!m.email).map(m => m.email as string)
+      return all.filter(m => !!m.email && m.email.includes('@')).map(m => m.email as string)
     } catch {
       return []
     }
   }, [])
 
   const emails = new Set<string>(Array.isArray(members) ? members : [])
-  if (currentUser?.email) emails.add(currentUser.email)
+  if (currentUser?.email && currentUser.email.includes('@')) emails.add(currentUser.email)
 
   return [...emails].sort()
 }
