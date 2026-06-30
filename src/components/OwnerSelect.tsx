@@ -69,6 +69,7 @@ export function OwnerSelect({ value, onChange, onClose }: OwnerSelectProps) {
           size="small"
           value={draft}
           onChange={e => setDraft(e.target.value)}
+          onBlur={() => { onChange(draft); onClose() }}
           onKeyDown={e => {
             if (e.key === 'Enter') { onChange(draft); onClose() }
             if (e.key === 'Escape') onClose()
@@ -79,11 +80,8 @@ export function OwnerSelect({ value, onChange, onClose }: OwnerSelectProps) {
         />
         <IconButton
           size="small"
-          onMouseDown={e => {
-            e.preventDefault() // prevent TextField blur firing first
-            onChange(draft)
-            onClose()
-          }}
+          onMouseDown={e => e.preventDefault()}
+          onClick={() => { onChange(draft); onClose() }}
           sx={{ p: 0.5 }}
         >
           <Check size={14} />

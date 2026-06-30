@@ -49,7 +49,9 @@ export function ImportPage() {
   const [editingBatchId, setEditingBatchId] = useState<string | null>(null)
 
   async function saveBatchOwner(batchId: string, newOwner: string) {
-    await db.transactions.where('importId').equals(batchId).modify({ owner: newOwner.trim() || null })
+    const owner = newOwner.trim() || null
+    await db.transactions.where('importId').equals(batchId).modify({ owner })
+    await db.importBatches.update(batchId, { owner })
     triggerSync()
     setEditingBatchId(null)
   }
@@ -232,7 +234,7 @@ export function ImportPage() {
                     <TableCell sx={{ fontSize: 13 }}>
                       {editingBatchId === batch.id ? (
                         <OwnerSelect
-                          value=""
+                          value={batch.owner ?? ''}
                           onChange={v => saveBatchOwner(batch.id, v)}
                           onClose={() => setEditingBatchId(null)}
                         />
@@ -241,7 +243,9 @@ export function ImportPage() {
                           sx={{ display: 'flex', alignItems: 'center', gap: 0.5, cursor: 'pointer', '&:hover .edit-icon': { opacity: 1 } }}
                           onClick={() => setEditingBatchId(batch.id)}
                         >
-                          <Typography variant="caption" color="text.secondary">—</Typography>
+                          <Typography variant="caption" color={batch.owner ? 'text.primary' : 'text.secondary'}>
+                            {ownerDisplay(batch.owner)}
+                          </Typography>
                           <Pencil size={11} className="edit-icon" style={{ opacity: 0, transition: 'opacity 0.15s' }} />
                         </Box>
                       )}

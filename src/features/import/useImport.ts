@@ -123,6 +123,7 @@ export function useImport() {
           filename: p.filename,
           importedAt: new Date(),
           transactionCount: valid.length,
+          owner: owner?.trim() || null,
         })
       } catch {
         // importBatches unavailable (e.g. schema migration pending) — import still succeeded

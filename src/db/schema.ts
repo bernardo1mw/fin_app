@@ -25,6 +25,7 @@ export interface ImportBatch {
   filename: string
   importedAt: Date
   transactionCount: number
+  owner?: string | null
 }
 
 export interface Category {
