@@ -1,7 +1,9 @@
 import { useEffect, useSyncExternalStore, useState } from 'react'
+import { useLiveQuery } from 'dexie-react-hooks'
+import { db } from '@/db/db'
 import { formatDistanceToNow } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { AlertTriangle, X as XIcon, Lightbulb, CheckCircle, Info, Sparkles, Tag, Check, TrendingUp, TrendingDown, Minus, ShieldCheck, ShieldAlert } from 'lucide-react'
+import { AlertTriangle, X as XIcon, Lightbulb, CheckCircle, Info, Sparkles, Tag, Check, CheckCheck, TrendingUp, TrendingDown, Minus, ShieldCheck, ShieldAlert } from 'lucide-react'
 import Box from '@mui/material/Box'
 import Card from '@mui/material/Card'
 import CardContent from '@mui/material/CardContent'
@@ -34,12 +36,13 @@ export function SuggestionsPanel() {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
   const [loadingRules, setLoadingRules] = useState(true)
   const [bulkError, setBulkError] = useState<string | null>(null)
+  const [isForceRun, setIsForceRun] = useState(false)
 
   const { health, suggestions: aiSuggestions, loading: loadingAI, error: aiError, cacheTimestamp } = useSyncExternalStore(
     subscribeAIStore,
     getAIStoreSnapshot,
   )
-  const { categorizations, loading: loadingCat, error: catError, totalUncategorized } = useSyncExternalStore(
+  const { categorizations, loading: loadingCat, error: catError, batchProgress } = useSyncExternalStore(
     subscribeCatStore,
     getCatStoreSnapshot,
   )
@@ -47,24 +50,35 @@ export function SuggestionsPanel() {
   const aiConfig = loadAIConfig()
   const configured = isAIConfigured(aiConfig)
 
+  // Count uncategorized transactions the AI has never seen — reactive via Dexie
+  const neverSeenByAI = useLiveQuery(
+    () => db.transactions.filter(t => !t.categoryId && t.amount < 0 && !t.aiSeen).count()
+  ) ?? 0
+
+  // Total uncategorized (for enabling "Reanalisar todas")
+  const totalUncategorized = useLiveQuery(
+    () => db.transactions.filter(t => !t.categoryId && t.amount < 0).count()
+  ) ?? 0
+
   useEffect(() => {
     generateSuggestions().then(s => { setSuggestions(s); setLoadingRules(false) })
   }, [])
 
-  async function handleApplyAll() {
+  async function bulkApply(items: typeof categorizations) {
     setBulkError(null)
     let failed = 0
-    for (const item of [...categorizations]) {
-      try {
-        await applyAICategorization(item)
-      } catch {
-        failed++
-      }
+    for (const item of [...items]) {
+      try { await applyAICategorization(item) } catch { failed++ }
     }
-    if (failed > 0) {
-      setBulkError(`${failed} categorização(ões) falharam — aplique manualmente as que restarem.`)
-    }
+    if (failed > 0) setBulkError(`${failed} categorização(ões) falharam — aplique manualmente as que restarem.`)
   }
+
+  async function bulkDismiss(items: typeof categorizations) {
+    for (const item of [...items]) await dismissAICategorization(item.txId)
+  }
+
+  const highConf = categorizations.filter(c => c.confidence === 'high')
+  const lowConf = categorizations.filter(c => c.confidence === 'low')
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, maxWidth: 680, mx: 'auto' }}>
@@ -136,39 +150,44 @@ export function SuggestionsPanel() {
       {/* AI categorization */}
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
-          <Typography variant="overline" color="text.secondary">Sugestões de categorização</Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography variant="overline" color="text.secondary">Sugestões de categorização</Typography>
+            {!loadingCat && neverSeenByAI > 0 && (
+              <Chip label={`${neverSeenByAI} nova${neverSeenByAI !== 1 ? 's' : ''}`} size="small" color="primary" variant="outlined" />
+            )}
+            {!loadingCat && neverSeenByAI === 0 && configured && (
+              <Typography variant="caption" color="text.secondary">· todas analisadas</Typography>
+            )}
+          </Box>
           {configured ? (
-            <Box sx={{ display: 'flex', gap: 1 }}>
+            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
               {loadingCat && (
-                <Button
-                  size="small"
-                  variant="outlined"
-                  color="inherit"
-                  onClick={cancelAICategorizations}
-                  startIcon={<XIcon size={12} />}
-                >
+                <Button size="small" variant="outlined" color="inherit" onClick={cancelAICategorizations} startIcon={<XIcon size={12} />}>
                   Cancelar
-                </Button>
-              )}
-              {categorizations.length > 1 && (
-                <Button
-                  size="small"
-                  variant="outlined"
-                  color="success"
-                  onClick={handleApplyAll}
-                  startIcon={<Check size={12} />}
-                >
-                  Aceitar todas ({categorizations.length})
                 </Button>
               )}
               <Button
                 size="small"
                 variant="outlined"
-                onClick={() => requestAICategorizations(aiConfig)}
-                disabled={loadingCat}
-                startIcon={loadingCat ? <CircularProgress size={12} /> : <Tag size={12} />}
+                disabled={loadingCat || neverSeenByAI === 0}
+                onClick={() => { setIsForceRun(false); requestAICategorizations(aiConfig) }}
+                startIcon={(loadingCat && !isForceRun) ? <CircularProgress size={12} /> : <Tag size={12} />}
               >
-                {loadingCat ? 'Categorizando...' : 'Sugerir categorias'}
+                {loadingCat && !isForceRun
+                  ? batchProgress ? `Lote ${batchProgress.done}/${batchProgress.total}...` : 'Carregando...'
+                  : neverSeenByAI > 0 ? `Sugerir novas (${neverSeenByAI})` : 'Sugerir categorias'}
+              </Button>
+              <Button
+                size="small"
+                variant="outlined"
+                color="inherit"
+                disabled={loadingCat || totalUncategorized === 0}
+                onClick={() => { setIsForceRun(true); requestAICategorizations(aiConfig, { forceAll: true }) }}
+                startIcon={(loadingCat && isForceRun) ? <CircularProgress size={12} /> : <Tag size={12} />}
+              >
+                {loadingCat && isForceRun
+                  ? batchProgress ? `Lote ${batchProgress.done}/${batchProgress.total}...` : 'Carregando...'
+                  : 'Reanalisar todas'}
               </Button>
             </Box>
           ) : (
@@ -176,12 +195,36 @@ export function SuggestionsPanel() {
           )}
         </Box>
 
+        {categorizations.length > 0 && !loadingCat && (
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+            <Typography variant="caption" color="text.secondary" sx={{ mr: 0.5 }}>
+              {highConf.length} alta · {lowConf.length} baixa confiança
+            </Typography>
+            <Button size="small" variant="outlined" color="success" onClick={() => bulkApply(categorizations)} startIcon={<CheckCheck size={12} />}>
+              Aceitar todas
+            </Button>
+            {highConf.length > 0 && (
+              <Button size="small" variant="outlined" color="success" onClick={() => bulkApply(highConf)} startIcon={<Check size={12} />}>
+                Aceitar alta ({highConf.length})
+              </Button>
+            )}
+            {lowConf.length > 0 && (
+              <Button size="small" variant="outlined" color="error" onClick={() => bulkDismiss(lowConf)} startIcon={<XIcon size={12} />}>
+                Rejeitar baixa ({lowConf.length})
+              </Button>
+            )}
+            <Button size="small" variant="outlined" color="error" onClick={() => bulkDismiss(categorizations)} startIcon={<XIcon size={12} />}>
+              Rejeitar todas
+            </Button>
+          </Box>
+        )}
+
         {catError && <Alert severity="error">{catError}</Alert>}
         {bulkError && <Alert severity="warning" onClose={() => setBulkError(null)}>{bulkError}</Alert>}
 
-        {totalUncategorized > 15 && categorizations.length > 0 && (
+        {loadingCat && batchProgress && batchProgress.done > 0 && (
           <Alert severity="info" sx={{ py: 0.5 }}>
-            Mostrando {Math.min(15, categorizations.length)} de {totalUncategorized} transações sem categoria. Após aceitar estas, clique em "Sugerir categorias" para ver mais.
+            Lote {batchProgress.done}/{batchProgress.total} processado — {categorizations.length} sugestão(ões) encontrada(s) até agora.
           </Alert>
         )}
 
@@ -309,6 +352,15 @@ function CategorizationCard({ item }: { item: AICategorization }) {
               <Typography variant="caption" color="text.secondary" sx={{ flexShrink: 0 }}>
                 {fmt.format(item.amount)}
               </Typography>
+              <Chip
+                label={item.confidence === 'high' ? 'alta' : 'baixa'}
+                size="small"
+                sx={{
+                  height: 16, fontSize: 10, flexShrink: 0,
+                  bgcolor: item.confidence === 'high' ? '#22c55e22' : '#f9731622',
+                  color: item.confidence === 'high' ? '#15803d' : '#c2410c',
+                }}
+              />
             </Box>
             <Typography variant="caption" color="text.secondary">
               Sugestão: <strong>{item.categoryName}</strong> — {item.reason}

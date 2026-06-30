@@ -17,6 +17,7 @@ export interface Transaction {
   currency: string
   importId?: string | null
   owner?: string | null
+  aiSeen?: boolean
 }
 
 export interface ImportBatch {

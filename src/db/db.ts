@@ -39,6 +39,15 @@ class FinanceDB extends Dexie {
       importBatches: 'id, importedAt, realmId',
       transactionMatches: 'id, txId1, txId2, status, realmId',
     })
+    this.version(5).stores({
+      transactions: 'id, [accountId+fitId], date, amount, payee, categoryId, accountId, cnpjPrefix, transactionSubtype, realmId, importId',
+      categories: 'id, name, type, realmId',
+      categoryRules: 'id, cnpjPrefix, namePattern, categoryId, priority, realmId',
+      accounts: 'id, bankId, acctId, realmId',
+      userProfile: 'id',
+      importBatches: 'id, importedAt, realmId',
+      transactionMatches: 'id, txId1, txId2, status, realmId',
+    })
     if (CLOUD_URL) {
       this.cloud.configure({
         databaseUrl: CLOUD_URL,

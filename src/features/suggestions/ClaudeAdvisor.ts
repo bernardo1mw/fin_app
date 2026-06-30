@@ -32,6 +32,7 @@ export interface AICategorization {
   reason: string
   payee: string
   amount: number
+  confidence: 'high' | 'low'
 }
 
 export type AIProvider = 'anthropic' | 'ollama' | 'openrouter' | 'gemini'
@@ -84,6 +85,7 @@ type AICatStore = {
   loading: boolean
   error: string | null
   totalUncategorized: number
+  batchProgress: { done: number; total: number } | null
 }
 
 function makeStore<T extends object>(initial: T) {
@@ -104,6 +106,7 @@ function makeStore<T extends object>(initial: T) {
 
 const ANALYSIS_CACHE_KEY = 'ai_analysis_cache'
 const DISMISSED_CAT_KEY = 'ai_dismissed_categorizations'
+const PENDING_CAT_KEY = 'ai_pending_categorizations'
 
 interface AnalysisCache {
   health: AIHealthSummary
@@ -134,6 +137,21 @@ function saveDismissed(ids: Set<string>) {
   localStorage.setItem(DISMISSED_CAT_KEY, JSON.stringify([...ids]))
 }
 
+function loadPendingCats(): AICategorization[] {
+  try {
+    const raw = localStorage.getItem(PENDING_CAT_KEY)
+    return raw ? (JSON.parse(raw) as AICategorization[]) : []
+  } catch { return [] }
+}
+
+function savePendingCats(items: AICategorization[]) {
+  if (items.length === 0) {
+    localStorage.removeItem(PENDING_CAT_KEY)
+  } else {
+    localStorage.setItem(PENDING_CAT_KEY, JSON.stringify(items))
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Store initialization (seeded from cache)
 // ---------------------------------------------------------------------------
@@ -147,7 +165,8 @@ const analysisStore = makeStore<AIAnalysisStore>({
   error: null,
   cacheTimestamp: _cached?.timestamp ?? null,
 })
-const catStore = makeStore<AICatStore>({ categorizations: [], loading: false, error: null, totalUncategorized: 0 })
+const _pendingCats = loadPendingCats()
+const catStore = makeStore<AICatStore>({ categorizations: _pendingCats, loading: false, error: null, totalUncategorized: 0, batchProgress: null })
 
 export const subscribeAIStore = analysisStore.subscribe
 export const getAIStoreSnapshot = analysisStore.snapshot
@@ -588,11 +607,10 @@ function parseCategorizations(text: string, validCategoryIds: Set<string>): AICa
       typeof (item as RawCat).txId === 'string' &&
       typeof (item as RawCat).categoryId === 'string' &&
       typeof (item as RawCat).categoryName === 'string' &&
-      (item as RawCat).confidence === 'high' &&
-      validCategoryIds.has((item as RawCat).categoryId)  // reject any ID not in the list we sent
+      ((item as RawCat).confidence === 'high' || (item as RawCat).confidence === 'low') &&
+      validCategoryIds.has((item as RawCat).categoryId)
   )
-  // Empty is valid — means all transactions were ambiguous or low-confidence
-  return valid as unknown as AICategorization[]
+  return valid.map(c => ({ ...c, confidence: c.confidence as 'high' | 'low', reason: c.reason ?? '' })) as unknown as AICategorization[]
 }
 
 // ---------------------------------------------------------------------------
@@ -775,19 +793,35 @@ export async function requestAISuggestions(config: AIProviderConfig): Promise<vo
   }
 }
 
-export async function requestAICategorizations(config: AIProviderConfig): Promise<void> {
+export async function requestAICategorizations(config: AIProviderConfig, options: { forceAll?: boolean } = {}): Promise<void> {
+  const { forceAll = false } = options
   if (catStore.snapshot().loading) return
   catController = new AbortController()
-  catStore.set({ loading: true, error: null, categorizations: [] })
+  const signal = catController.signal
+
+  // Pre-seed UI with existing pending so the user sees prior results while new batches run
+  const existing = loadPendingCats()
+  catStore.set({ loading: true, error: null, categorizations: existing, batchProgress: null })
+
   try {
+    const dismissed = loadDismissed()
+
+    // One-time migration: dismissed transactions from before the aiSeen DB field was introduced
+    // don't have aiSeen=true yet — backfill so counts and filters stay consistent.
+    if (dismissed.size > 0) {
+      await db.transactions.where('id').anyOf([...dismissed]).modify({ aiSeen: true })
+    }
+
     const [allTxs, categories] = await Promise.all([
       db.transactions.toArray(),
       db.categories.toArray(),
     ])
-    const dismissed = loadDismissed()
+    const txMap = Object.fromEntries(allTxs.map(tx => [tx.id!, tx]))
+    const validCategoryIds = new Set(categories.filter(c => c.type === 'expense').map(c => c.id!))
+
+    // forceAll: re-send everything except dismissed; normal: only novas (aiSeen=false)
     const uncategorized = allTxs
-      .filter(tx => !tx.categoryId && tx.amount < 0 && !dismissed.has(tx.id!))
-      // Prioritize debit-card transactions (merchant names → high confidence) over PIX to people
+      .filter(tx => !tx.categoryId && tx.amount < 0 && !dismissed.has(tx.id!) && (forceAll || !tx.aiSeen))
       .sort((a, b) => {
         const rank = (tx: typeof a) =>
           tx.transactionSubtype === 'debit_card' ? 0 :
@@ -795,37 +829,58 @@ export async function requestAICategorizations(config: AIProviderConfig): Promis
         return rank(a) - rank(b) || b.date.getTime() - a.date.getTime()
       })
 
-    const totalUncategorized = uncategorized.length
-    // Ollama: small batch; cloud: up to 100 with thinking disabled
-    const batchSize = config.provider === 'ollama' ? 8 : 100
-    const batch = uncategorized.slice(0, batchSize)
+    catStore.set({ totalUncategorized: uncategorized.length })
 
-    if (batch.length === 0) {
-      catStore.set({ categorizations: [], loading: false, error: null, totalUncategorized: 0 })
+    if (uncategorized.length === 0) {
+      catStore.set({ loading: false, batchProgress: null })
       return
     }
 
-    const txMap = Object.fromEntries(batch.map(tx => [tx.id!, tx]))
-    const validCategoryIds = new Set(categories.filter(c => c.type === 'expense').map(c => c.id!))
+    const batchSize = config.provider === 'ollama' ? 8 : 100
     const maxTokens = config.provider === 'ollama' ? batchSize * 70 + 200 : 8000
-    const text = await callProvider(config, buildCategorizationPrompt(batch, categories), catController.signal, maxTokens)
-    const parsed = parseCategorizations(text, validCategoryIds)
-    const enriched: AICategorization[] = parsed
-      .filter(c => txMap[c.txId])
-      .map(c => ({
-        ...c,
-        payee: txMap[c.txId].payee,
-        amount: Math.round(Math.abs(txMap[c.txId].amount)),
-      }))
-    const error = enriched.length === 0 && batch.length > 0
-      ? 'Nenhuma transação com confiança suficiente para sugerir categoria. Tente categorizar manualmente as transações ambíguas (transferências, faturas de cartão).'
+
+    const batches: typeof uncategorized[] = []
+    for (let i = 0; i < uncategorized.length; i += batchSize) batches.push(uncategorized.slice(i, i + batchSize))
+
+    catStore.set({ batchProgress: { done: 0, total: batches.length } })
+
+    // Use a Map for deduplication: new result for same txId replaces old
+    const accMap = new Map(existing.map(c => [c.txId, c]))
+
+    for (let i = 0; i < batches.length; i++) {
+      if (signal.aborted) break
+      try {
+        const text = await callProvider(config, buildCategorizationPrompt(batches[i], categories), signal, maxTokens)
+        const parsed = parseCategorizations(text, validCategoryIds)
+        for (const c of parsed) {
+          if (!txMap[c.txId]) continue
+          accMap.set(c.txId, { ...c, payee: txMap[c.txId].payee, amount: Math.round(Math.abs(txMap[c.txId].amount)) })
+        }
+      } catch (batchErr) {
+        if (batchErr instanceof Error && batchErr.name === 'AbortError') throw batchErr
+        // Single batch failure: skip and continue
+      }
+      // Mark all txns in this batch as seen in the DB (regardless of suggestions returned)
+      await db.transactions.where('id').anyOf(batches[i].map(tx => tx.id!)).modify({ aiSeen: true })
+      const accumulated = [...accMap.values()].sort((a, b) =>
+        a.confidence === b.confidence ? 0 : a.confidence === 'high' ? -1 : 1
+      )
+      savePendingCats(accumulated)
+      catStore.set({ categorizations: accumulated, batchProgress: { done: i + 1, total: batches.length } })
+    }
+
+    const accumulated = [...accMap.values()].sort((a, b) =>
+      a.confidence === b.confidence ? 0 : a.confidence === 'high' ? -1 : 1
+    )
+    const error = accumulated.length === 0 && uncategorized.length > 0
+      ? `A IA não retornou sugestões válidas para as ${uncategorized.length} transações analisadas. Verifique se há categorias do tipo "despesa" cadastradas.`
       : null
-    catStore.set({ categorizations: enriched, loading: false, totalUncategorized, error })
+    catStore.set({ loading: false, batchProgress: null, error })
   } catch (e) {
     if (e instanceof Error && e.name === 'AbortError') {
-      catStore.set({ loading: false })
+      catStore.set({ loading: false, batchProgress: null })
     } else {
-      catStore.set({ loading: false, error: parseApiError(e) })
+      catStore.set({ loading: false, batchProgress: null, error: parseApiError(e) })
     }
   } finally {
     catController = null
@@ -842,16 +897,17 @@ export async function applyAICategorization(cat: AICategorization): Promise<void
   await db.transactions.update(cat.txId, { categoryId: cat.categoryId })
   const { upsertRuleForTransaction } = await import('@/features/categories/useCategorization')
   await upsertRuleForTransaction(tx, cat.categoryId)
-  catStore.set({
-    categorizations: catStore.snapshot().categorizations.filter(c => c.txId !== cat.txId),
-  })
+  const updated = catStore.snapshot().categorizations.filter(c => c.txId !== cat.txId)
+  savePendingCats(updated)
+  catStore.set({ categorizations: updated })
 }
 
 export async function dismissAICategorization(txId: string): Promise<void> {
   const dismissed = loadDismissed()
   dismissed.add(txId)
   saveDismissed(dismissed)
-  catStore.set({
-    categorizations: catStore.snapshot().categorizations.filter(c => c.txId !== txId),
-  })
+  await db.transactions.update(txId, { aiSeen: true })
+  const updated = catStore.snapshot().categorizations.filter(c => c.txId !== txId)
+  savePendingCats(updated)
+  catStore.set({ categorizations: updated })
 }
