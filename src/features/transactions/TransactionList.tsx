@@ -38,6 +38,7 @@ import type { TransactionFilter } from './useTransactions'
 import { AddTransactionDialog } from './AddTransactionDialog'
 import { MatchesPage } from '@/features/matches/MatchesPage'
 import { createManualMatch } from '@/features/matches/useMatches'
+import { OwnerSelect, ownerDisplay } from '@/components/OwnerSelect'
 import type { Transaction } from '@/db/schema'
 
 interface PendingChange {
@@ -62,7 +63,6 @@ export function TransactionList() {
   const [matchError, setMatchError] = useState<string | null>(null)
   const [matchLoading, setMatchLoading] = useState(false)
   const [editingOwnerId, setEditingOwnerId] = useState<string | null>(null)
-  const [ownerDraft, setOwnerDraft] = useState('')
 
   function updateFilters(updater: (f: TransactionFilter) => TransactionFilter) {
     setFilters(updater)
@@ -72,8 +72,8 @@ export function TransactionList() {
   const { transactions, categories, accounts, setCategory, setCategoryAllByPayee, setCategoryBulk, countSamePayee, deleteTransaction, deleteTransactionsBulk, setOwner } =
     useTransactions(filters, true)
 
-  async function saveOwner(txId: string) {
-    await setOwner(txId, ownerDraft.trim() || null)
+  async function saveOwner(txId: string, newOwner: string) {
+    await setOwner(txId, newOwner.trim() || null)
     setEditingOwnerId(null)
   }
 
@@ -480,26 +480,18 @@ export function TransactionList() {
                     </TableCell>
                     <TableCell onClick={e => e.stopPropagation()} sx={{ minWidth: 90 }}>
                       {editingOwnerId === tx.id ? (
-                        <TextField
-                          autoFocus
-                          size="small"
-                          value={ownerDraft}
-                          onChange={e => setOwnerDraft(e.target.value)}
-                          onBlur={() => saveOwner(tx.id!)}
-                          onKeyDown={e => {
-                            if (e.key === 'Enter') saveOwner(tx.id!)
-                            if (e.key === 'Escape') setEditingOwnerId(null)
-                          }}
-                          sx={{ width: 90 }}
-                          slotProps={{ input: { sx: { fontSize: 12, py: 0.5 } } }}
+                        <OwnerSelect
+                          value={tx.owner ?? ''}
+                          onChange={v => saveOwner(tx.id!, v)}
+                          onClose={() => setEditingOwnerId(null)}
                         />
                       ) : (
                         <Typography
                           variant="caption"
-                          onClick={() => { setEditingOwnerId(tx.id!); setOwnerDraft(tx.owner ?? '') }}
+                          onClick={() => setEditingOwnerId(tx.id!)}
                           sx={{ cursor: 'pointer', color: tx.owner ? 'text.primary' : 'text.disabled', '&:hover': { textDecoration: 'underline' } }}
                         >
-                          {tx.owner || '—'}
+                          {ownerDisplay(tx.owner)}
                         </Typography>
                       )}
                     </TableCell>

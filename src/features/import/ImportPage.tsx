@@ -1,6 +1,6 @@
 import { useRef, useState, useCallback } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Upload, CheckCircle, AlertCircle, ChevronLeft, ChevronRight, Trash2, Pencil, Check } from 'lucide-react'
+import { Upload, CheckCircle, AlertCircle, ChevronLeft, ChevronRight, Trash2, Pencil } from 'lucide-react'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import Box from '@mui/material/Box'
@@ -21,6 +21,10 @@ import TableRow from '@mui/material/TableRow'
 import Paper from '@mui/material/Paper'
 import CircularProgress from '@mui/material/CircularProgress'
 import TextField from '@mui/material/TextField'
+import Select from '@mui/material/Select'
+import MenuItem from '@mui/material/MenuItem'
+import FormControl from '@mui/material/FormControl'
+import InputLabel from '@mui/material/InputLabel'
 import Tooltip from '@mui/material/Tooltip'
 import IconButton from '@mui/material/IconButton'
 import Dialog from '@mui/material/Dialog'
@@ -29,6 +33,7 @@ import DialogContent from '@mui/material/DialogContent'
 import DialogActions from '@mui/material/DialogActions'
 import { db, triggerSync } from '@/db/db'
 import { useImport, isValidRow, type PreviewRow, type ParsedPreview } from './useImport'
+import { useRealmMembers, ownerDisplay, OwnerSelect } from '@/components/OwnerSelect'
 
 const PAGE_SIZE = 15
 
@@ -42,10 +47,9 @@ export function ImportPage() {
   const [confirmUndo, setConfirmUndo] = useState<string | null>(null)
   const [owner, setOwner] = useState('')
   const [editingBatchId, setEditingBatchId] = useState<string | null>(null)
-  const [batchOwnerDraft, setBatchOwnerDraft] = useState('')
 
-  async function saveBatchOwner(batchId: string) {
-    await db.transactions.where('importId').equals(batchId).modify({ owner: batchOwnerDraft.trim() || null })
+  async function saveBatchOwner(batchId: string, newOwner: string) {
+    await db.transactions.where('importId').equals(batchId).modify({ owner: newOwner.trim() || null })
     triggerSync()
     setEditingBatchId(null)
   }
@@ -227,29 +231,15 @@ export function ImportPage() {
                     <TableCell align="right" sx={{ fontSize: 13 }}>{batch.transactionCount}</TableCell>
                     <TableCell sx={{ fontSize: 13 }}>
                       {editingBatchId === batch.id ? (
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                          <TextField
-                            autoFocus
-                            size="small"
-                            value={batchOwnerDraft}
-                            onChange={e => setBatchOwnerDraft(e.target.value)}
-                            onBlur={() => saveBatchOwner(batch.id)}
-                            onKeyDown={e => {
-                              if (e.key === 'Enter') saveBatchOwner(batch.id)
-                              if (e.key === 'Escape') setEditingBatchId(null)
-                            }}
-                            placeholder="Responsável"
-                            sx={{ width: 130 }}
-                            slotProps={{ input: { sx: { fontSize: 12, py: 0.5 } } }}
-                          />
-                          <IconButton size="small" onMouseDown={() => saveBatchOwner(batch.id)}>
-                            <Check size={13} />
-                          </IconButton>
-                        </Box>
+                        <OwnerSelect
+                          value=""
+                          onChange={v => saveBatchOwner(batch.id, v)}
+                          onClose={() => setEditingBatchId(null)}
+                        />
                       ) : (
                         <Box
                           sx={{ display: 'flex', alignItems: 'center', gap: 0.5, cursor: 'pointer', '&:hover .edit-icon': { opacity: 1 } }}
-                          onClick={() => { setEditingBatchId(batch.id); setBatchOwnerDraft('') }}
+                          onClick={() => setEditingBatchId(batch.id)}
                         >
                           <Typography variant="caption" color="text.secondary">—</Typography>
                           <Pencil size={11} className="edit-icon" style={{ opacity: 0, transition: 'opacity 0.15s' }} />
@@ -317,6 +307,7 @@ function ReviewPanel({
   onTabChange, onPageChange, onToggleRow, onToggleAll,
   onSelectAll, onDeselectAll, onConfirm,
 }: ReviewPanelProps) {
+  const members = useRealmMembers()
   if (preview.parseError) {
     return (
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -342,14 +333,31 @@ function ReviewPanel({
           )}
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <TextField
-            size="small"
-            label="Responsável (opcional)"
-            value={owner}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => onOwnerChange(e.target.value)}
-            placeholder="Ex: Bernardo"
-            sx={{ width: 180 }}
-          />
+          {members.length > 0 ? (
+            <FormControl size="small" sx={{ width: 180 }}>
+              <InputLabel>Responsável</InputLabel>
+              <Select
+                label="Responsável"
+                value={owner}
+                onChange={e => onOwnerChange(e.target.value as string)}
+                displayEmpty
+              >
+                <MenuItem value=""><em>Nenhum</em></MenuItem>
+                {members.map(email => (
+                  <MenuItem key={email} value={email}>{ownerDisplay(email)}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          ) : (
+            <TextField
+              size="small"
+              label="Responsável (opcional)"
+              value={owner}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => onOwnerChange(e.target.value)}
+              placeholder="Ex: Bernardo"
+              sx={{ width: 180 }}
+            />
+          )}
           <Button
             variant="contained"
             size="small"
