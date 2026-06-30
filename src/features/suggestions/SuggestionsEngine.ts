@@ -30,8 +30,8 @@ export async function generateSuggestions(): Promise<Suggestion[]> {
   const catMap = Object.fromEntries(categories.map(c => [c.id!, c])) as Record<number, Category>
   const suggestions: Suggestion[] = []
 
-  // Uncategorized
-  const uncategorized = thisMonthTxs.filter(t => t.categoryId === null && t.amount < 0).length
+  // Uncategorized — count across all time, not just this month
+  const uncategorized = await db.transactions.filter(t => t.categoryId === null && t.amount < 0).count()
   if (uncategorized > 0) {
     suggestions.push({
       id: 'uncategorized',

@@ -787,11 +787,17 @@ export async function requestAICategorizations(config: AIProviderConfig): Promis
     const dismissed = loadDismissed()
     const uncategorized = allTxs
       .filter(tx => !tx.categoryId && tx.amount < 0 && !dismissed.has(tx.id!))
-      .sort((a, b) => b.date.getTime() - a.date.getTime())
+      // Prioritize debit-card transactions (merchant names → high confidence) over PIX to people
+      .sort((a, b) => {
+        const rank = (tx: typeof a) =>
+          tx.transactionSubtype === 'debit_card' ? 0 :
+          tx.transactionSubtype === 'other'       ? 1 : 2
+        return rank(a) - rank(b) || b.date.getTime() - a.date.getTime()
+      })
 
     const totalUncategorized = uncategorized.length
-    // Ollama: small batch to stay within 4096-token context; cloud: larger batch is fine
-    const batchSize = config.provider === 'ollama' ? 8 : 30
+    // Ollama: small batch; cloud: larger batch is fine with thinking disabled
+    const batchSize = config.provider === 'ollama' ? 8 : 50
     const batch = uncategorized.slice(0, batchSize)
 
     if (batch.length === 0) {
@@ -802,7 +808,7 @@ export async function requestAICategorizations(config: AIProviderConfig): Promis
     const txMap = Object.fromEntries(batch.map(tx => [tx.id!, tx]))
     const validCategoryIds = new Set(categories.filter(c => c.type === 'expense').map(c => c.id!))
     // Tight max_tokens for Ollama; cloud can handle larger batches
-    const maxTokens = config.provider === 'ollama' ? batchSize * 70 + 200 : 4096
+    const maxTokens = config.provider === 'ollama' ? batchSize * 70 + 200 : 6000
     const text = await callProvider(config, buildCategorizationPrompt(batch, categories), catController.signal, maxTokens)
     const parsed = parseCategorizations(text, validCategoryIds)
     const enriched: AICategorization[] = parsed
