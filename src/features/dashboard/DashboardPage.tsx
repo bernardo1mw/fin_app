@@ -120,7 +120,7 @@ export function DashboardPage() {
                       dataKey="value"
                       nameKey="name"
                       cx="50%"
-                      cy="50%"
+                      cy="45%"
                       outerRadius={isMobile ? 70 : 80}
                       label={isMobile ? undefined : ({ name, value }) => `${(name as string).split(' ')[0]} ${fmtShort(value as number)}`}
                       labelLine={!isMobile}
@@ -128,7 +128,7 @@ export function DashboardPage() {
                       {spendingByCategory.map((entry, i) => <Cell key={i} fill={entry.color} />)}
                     </Pie>
                     <Tooltip formatter={(v) => fmt(Number(v ?? 0))} />
-                    <Legend />
+                    <Legend wrapperStyle={{ paddingTop: 24 }} />
                   </PieChart>
                 </ResponsiveContainer>
               )
