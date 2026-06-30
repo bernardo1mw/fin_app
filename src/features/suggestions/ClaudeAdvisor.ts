@@ -796,8 +796,8 @@ export async function requestAICategorizations(config: AIProviderConfig): Promis
       })
 
     const totalUncategorized = uncategorized.length
-    // Ollama: small batch; cloud: larger batch is fine with thinking disabled
-    const batchSize = config.provider === 'ollama' ? 8 : 50
+    // Ollama: small batch; cloud: up to 100 with thinking disabled
+    const batchSize = config.provider === 'ollama' ? 8 : 100
     const batch = uncategorized.slice(0, batchSize)
 
     if (batch.length === 0) {
@@ -807,8 +807,7 @@ export async function requestAICategorizations(config: AIProviderConfig): Promis
 
     const txMap = Object.fromEntries(batch.map(tx => [tx.id!, tx]))
     const validCategoryIds = new Set(categories.filter(c => c.type === 'expense').map(c => c.id!))
-    // Tight max_tokens for Ollama; cloud can handle larger batches
-    const maxTokens = config.provider === 'ollama' ? batchSize * 70 + 200 : 6000
+    const maxTokens = config.provider === 'ollama' ? batchSize * 70 + 200 : 8000
     const text = await callProvider(config, buildCategorizationPrompt(batch, categories), catController.signal, maxTokens)
     const parsed = parseCategorizations(text, validCategoryIds)
     const enriched: AICategorization[] = parsed
