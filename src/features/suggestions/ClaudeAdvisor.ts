@@ -513,13 +513,21 @@ Responda SOMENTE com JSON válido, sem markdown:
 // JSON parsing
 // ---------------------------------------------------------------------------
 
+function fixJSON(s: string): string {
+  // Remove trailing commas before ] or } — common AI output mistake
+  return s.replace(/,(\s*[}\]])/g, '$1')
+}
+
 function extractJSON(text: string): unknown {
+  const tryParse = (s: string): unknown => {
+    try { return JSON.parse(s) } catch { return JSON.parse(fixJSON(s)) }
+  }
   try {
-    return JSON.parse(text)
+    return tryParse(text)
   } catch {
     const match = text.match(/\{[\s\S]*\}/) ?? text.match(/\[[\s\S]*\]/)
     if (!match) throw new Error('Resposta inválida da IA')
-    return JSON.parse(match[0])
+    return tryParse(match[0])
   }
 }
 
