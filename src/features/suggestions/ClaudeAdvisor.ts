@@ -605,12 +605,17 @@ function parseCategorizations(text: string, validCategoryIds: Set<string>): AICa
     (item): item is RawCat =>
       typeof item === 'object' && item !== null &&
       typeof (item as RawCat).txId === 'string' &&
-      typeof (item as RawCat).categoryId === 'string' &&
+      (item as RawCat).categoryId != null &&
       typeof (item as RawCat).categoryName === 'string' &&
       ((item as RawCat).confidence === 'high' || (item as RawCat).confidence === 'low') &&
-      validCategoryIds.has((item as RawCat).categoryId)
+      validCategoryIds.has(String((item as RawCat).categoryId))
   )
-  return valid.map(c => ({ ...c, confidence: c.confidence as 'high' | 'low', reason: c.reason ?? '' })) as unknown as AICategorization[]
+  return valid.map(c => ({
+    ...c,
+    categoryId: String(c.categoryId),
+    confidence: c.confidence as 'high' | 'low',
+    reason: c.reason ?? '',
+  })) as unknown as AICategorization[]
 }
 
 // ---------------------------------------------------------------------------
@@ -817,7 +822,8 @@ export async function requestAICategorizations(config: AIProviderConfig, options
       db.categories.toArray(),
     ])
     const txMap = Object.fromEntries(allTxs.map(tx => [tx.id!, tx]))
-    const validCategoryIds = new Set(categories.filter(c => c.type === 'expense').map(c => c.id!))
+    // Normalize to strings — category IDs may be numbers at runtime despite the TS type
+    const validCategoryIds = new Set(categories.filter(c => c.type === 'expense').map(c => String(c.id!)))
 
     // forceAll: re-send everything except dismissed; normal: only novas (aiSeen=false)
     const uncategorized = allTxs
@@ -846,19 +852,22 @@ export async function requestAICategorizations(config: AIProviderConfig, options
 
     // Use a Map for deduplication: new result for same txId replaces old
     const accMap = new Map(existing.map(c => [c.txId, c]))
+    let successfulBatches = 0
+    let lastBatchError: string | null = null
 
     for (let i = 0; i < batches.length; i++) {
       if (signal.aborted) break
       try {
         const text = await callProvider(config, buildCategorizationPrompt(batches[i], categories), signal, maxTokens)
         const parsed = parseCategorizations(text, validCategoryIds)
+        successfulBatches++
         for (const c of parsed) {
           if (!txMap[c.txId]) continue
           accMap.set(c.txId, { ...c, payee: txMap[c.txId].payee, amount: Math.round(Math.abs(txMap[c.txId].amount)) })
         }
       } catch (batchErr) {
         if (batchErr instanceof Error && batchErr.name === 'AbortError') throw batchErr
-        // Single batch failure: skip and continue
+        lastBatchError = parseApiError(batchErr)
       }
       // Mark all txns in this batch as seen in the DB (regardless of suggestions returned)
       await db.transactions.where('id').anyOf(batches[i].map(tx => tx.id!)).modify({ aiSeen: true })
@@ -872,9 +881,16 @@ export async function requestAICategorizations(config: AIProviderConfig, options
     const accumulated = [...accMap.values()].sort((a, b) =>
       a.confidence === b.confidence ? 0 : a.confidence === 'high' ? -1 : 1
     )
-    const error = accumulated.length === 0 && uncategorized.length > 0
-      ? `A IA não retornou sugestões válidas para as ${uncategorized.length} transações analisadas. Verifique se há categorias do tipo "despesa" cadastradas.`
-      : null
+
+    let error: string | null = null
+    if (accumulated.length === 0 && uncategorized.length > 0) {
+      if (successfulBatches === 0 && lastBatchError) {
+        // Every batch failed — surface the real API error
+        error = lastBatchError
+      } else {
+        error = `A IA não retornou sugestões válidas para as ${uncategorized.length} transações analisadas. Verifique se há categorias do tipo "despesa" cadastradas.`
+      }
+    }
     catStore.set({ loading: false, batchProgress: null, error })
   } catch (e) {
     if (e instanceof Error && e.name === 'AbortError') {
