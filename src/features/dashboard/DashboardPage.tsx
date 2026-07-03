@@ -31,61 +31,23 @@ const fmtShort = (v: number) => {
 }
 
 export function DashboardPage() {
-  // null = all time
   const [selectedMonth, setSelectedMonth] = useState<Date | null>(() => startOfMonth(new Date()))
   const [ownerFilter, setOwnerFilter] = useState<string | '__none__' | undefined>(undefined)
   const { spendingByCategory, monthlyCashFlow, netWorthPoints, summary } = useDashboardData(selectedMonth, ownerFilter)
   const distinctOwners = useDistinctOwners()
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
-
   const allTime = selectedMonth === null
-  const isCurrentMonth = !allTime && isSameMonth(selectedMonth, new Date())
-  const monthLabel = selectedMonth ? format(selectedMonth, 'MMMM yyyy', { locale: ptBR }) : ''
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-        <Typography variant="h5" sx={{ fontWeight: 700, flexGrow: 1 }}>Dashboard</Typography>
-        {distinctOwners.length > 0 && (
-          <FormControl size="small" sx={{ minWidth: 130 }}>
-            <InputLabel>Responsável</InputLabel>
-            <Select
-              label="Responsável"
-              value={ownerFilter ?? ''}
-              onChange={e => setOwnerFilter((e.target.value as typeof ownerFilter) || undefined)}
-            >
-              <MenuItem value=""><em>Todos</em></MenuItem>
-              <MenuItem value="__none__"><em>Sem responsável</em></MenuItem>
-              {distinctOwners.map(o => (
-                <MenuItem key={o} value={o}>{ownerDisplay(o)}</MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        )}
-        <Button
-          size="small"
-          variant={allTime ? 'contained' : 'outlined'}
-          onClick={() => setSelectedMonth(allTime ? startOfMonth(new Date()) : null)}
-          sx={{ minWidth: 0, px: 1.5, textTransform: 'none', fontSize: 13 }}
-        >
-          Tudo
-        </Button>
-        <IconButton size="small" onClick={() => setSelectedMonth(m => subMonths(m ?? new Date(), 1))} disabled={allTime}>
-          <ChevronLeft size={18} />
-        </IconButton>
-        <Typography
-          variant="body2"
-          sx={{ minWidth: 120, textAlign: 'center', fontWeight: 600, textTransform: 'capitalize', cursor: allTime ? 'default' : 'pointer', color: allTime ? 'text.disabled' : 'text.primary' }}
-          onClick={() => { if (!allTime) setSelectedMonth(startOfMonth(new Date())) }}
-          title={allTime ? '' : 'Voltar para mês atual'}
-        >
-          {allTime ? '—' : monthLabel}
-        </Typography>
-        <IconButton size="small" onClick={() => setSelectedMonth(m => addMonths(m ?? new Date(), 1))} disabled={allTime || isCurrentMonth}>
-          <ChevronRight size={18} />
-        </IconButton>
-      </Box>
+      <DashboardFilters
+        selectedMonth={selectedMonth}
+        onMonthChange={setSelectedMonth}
+        ownerFilter={ownerFilter}
+        onOwnerChange={setOwnerFilter}
+        distinctOwners={distinctOwners}
+      />
 
       {/* KPI cards — always visible */}
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: 'repeat(4, 1fr)' }, gap: 2 }}>
@@ -184,6 +146,64 @@ export function DashboardPage() {
           </CardContent>
         </Card>
       </Box>
+    </Box>
+  )
+}
+
+type DashboardFiltersProps = {
+  selectedMonth: Date | null
+  onMonthChange: (m: Date | null) => void
+  ownerFilter: string | '__none__' | undefined
+  onOwnerChange: (v: string | '__none__' | undefined) => void
+  distinctOwners: string[]
+}
+
+function DashboardFilters({ selectedMonth, onMonthChange, ownerFilter, onOwnerChange, distinctOwners }: DashboardFiltersProps) {
+  const allTime = selectedMonth === null
+  const isCurrentMonth = !allTime && isSameMonth(selectedMonth, new Date())
+  const monthLabel = selectedMonth ? format(selectedMonth, 'MMMM yyyy', { locale: ptBR }) : ''
+
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+      <Typography variant="h5" sx={{ fontWeight: 700, flexGrow: 1 }}>Dashboard</Typography>
+      {distinctOwners.length > 0 && (
+        <FormControl size="small" sx={{ minWidth: 130 }}>
+          <InputLabel>Responsável</InputLabel>
+          <Select
+            label="Responsável"
+            value={ownerFilter ?? ''}
+            onChange={e => onOwnerChange((e.target.value as typeof ownerFilter) || undefined)}
+          >
+            <MenuItem value=""><em>Todos</em></MenuItem>
+            <MenuItem value="__none__"><em>Sem responsável</em></MenuItem>
+            {distinctOwners.map(o => (
+              <MenuItem key={o} value={o}>{ownerDisplay(o)}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      )}
+      <Button
+        size="small"
+        variant={allTime ? 'contained' : 'outlined'}
+        onClick={() => onMonthChange(allTime ? startOfMonth(new Date()) : null)}
+        sx={{ minWidth: 0, px: 1.5, textTransform: 'none', fontSize: 13 }}
+      >
+        Tudo
+      </Button>
+      <IconButton size="small" onClick={() => onMonthChange(subMonths(selectedMonth ?? new Date(), 1))} disabled={allTime}>
+        <ChevronLeft size={18} />
+      </IconButton>
+      <Typography
+        variant="body2"
+        sx={{ minWidth: 120, textAlign: 'center', fontWeight: 600, textTransform: 'capitalize', cursor: allTime ? 'default' : 'pointer', color: allTime ? 'text.disabled' : 'text.primary' }}
+        onClick={() => { if (!allTime) onMonthChange(startOfMonth(new Date())) }}
+        title={allTime ? '' : 'Voltar para mês atual'}
+      >
+        {allTime ? '—' : monthLabel}
+      </Typography>
+      <IconButton size="small" onClick={() => onMonthChange(addMonths(selectedMonth ?? new Date(), 1))} disabled={allTime || isCurrentMonth}>
+        <ChevronRight size={18} />
+      </IconButton>
     </Box>
   )
 }
