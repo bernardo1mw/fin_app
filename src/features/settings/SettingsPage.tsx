@@ -1,8 +1,8 @@
 import { useState, useSyncExternalStore } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Download, Eye, EyeOff, Save, Cloud, CloudOff, LogIn, LogOut, UserPlus, RefreshCw } from 'lucide-react'
+import { Download, Eye, EyeOff, Save, Cloud, CloudOff, LogIn, LogOut, UserPlus, RefreshCw, Trash2 } from 'lucide-react'
 import type { SelectChangeEvent } from '@mui/material/Select'
-import { db, cloudEnabled } from '@/db/db'
+import { db, cloudEnabled, triggerSync } from '@/db/db'
 import { loadAIConfig, AI_CONFIG_KEY, type AIProvider, type AIProviderConfig } from '@/features/suggestions/ClaudeAdvisor'
 import { setSharedRealmId, resolveActiveRealmId } from '@/db/sharedRealm'
 import Box from '@mui/material/Box'
@@ -101,6 +101,7 @@ export function SettingsPage() {
   const [migrating, setMigrating] = useState(false)
   const [migrateMsg, setMigrateMsg] = useState('')
   const [showDiag, setShowDiag] = useState(false)
+  const [clearing, setClearing] = useState(false)
 
   const cloudUser = useCloudUser()
   const isLoggedIn = cloudUser?.isLoggedIn ?? false
@@ -133,6 +134,23 @@ export function SettingsPage() {
     })
     setDraft({})
     flash('Perfil salvo!')
+  }
+
+  async function clearAllData() {
+    if (!confirm('Isso vai apagar TODAS as transações, contas e importações permanentemente. Exporte um backup antes de continuar. Deseja continuar?')) return
+    setClearing(true)
+    try {
+      await Promise.all([
+        db.transactions.clear(),
+        db.accounts.clear(),
+        db.importBatches.clear(),
+        db.transactionMatches.clear(),
+      ])
+      triggerSync()
+      flash('Todos os dados foram apagados.')
+    } finally {
+      setClearing(false)
+    }
   }
 
   async function exportData() {
@@ -583,6 +601,22 @@ export function SettingsPage() {
           <Divider />
           <Button variant="outlined" startIcon={<Download size={14} />} onClick={exportData} sx={{ alignSelf: 'flex-start' }}>
             Exportar dados (JSON)
+          </Button>
+          <Divider />
+          <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'error.main' }}>Apagar dados</Typography>
+          <Typography variant="body2" color="text.secondary">
+            Remove todas as transações, contas e importações. Categorias e regras são mantidas. Esta ação não pode ser desfeita.
+          </Typography>
+          <Button
+            variant="outlined"
+            color="error"
+            size="small"
+            startIcon={<Trash2 size={14} />}
+            onClick={clearAllData}
+            disabled={clearing}
+            sx={{ alignSelf: 'flex-start' }}
+          >
+            {clearing ? 'Apagando...' : 'Limpar todos os dados'}
           </Button>
         </CardContent>
       </Card>
