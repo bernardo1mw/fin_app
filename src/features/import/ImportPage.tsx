@@ -179,7 +179,6 @@ export function ImportPage() {
           owner={owner}
           onOwnerChange={setOwner}
           onTabChange={(v) => { setTab(v); setPage(0) }}
-          page={page}
           rowsPerPage={rowsPerPage}
           onPageChange={setPage}
           onRowsPerPageChange={(rpp) => { setRowsPerPage(rpp); setPage(0) }}
