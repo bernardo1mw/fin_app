@@ -23,6 +23,8 @@ import {
   cancelAICategorizations,
   applyAICategorization,
   dismissAICategorization,
+  bulkApplyAICategorizations,
+  bulkDismissAICategorizations,
   subscribeAIStore,
   getAIStoreSnapshot,
   subscribeCatStore,
@@ -66,15 +68,12 @@ export function SuggestionsPanel() {
 
   async function bulkApply(items: typeof categorizations) {
     setBulkError(null)
-    let failed = 0
-    for (const item of [...items]) {
-      try { await applyAICategorization(item) } catch { failed++ }
-    }
+    const failed = await bulkApplyAICategorizations([...items])
     if (failed > 0) setBulkError(`${failed} categorização(ões) falharam — aplique manualmente as que restarem.`)
   }
 
   async function bulkDismiss(items: typeof categorizations) {
-    for (const item of [...items]) await dismissAICategorization(item.txId)
+    await bulkDismissAICategorizations(items.map(i => i.txId))
   }
 
   const highConf = categorizations.filter(c => c.confidence === 'high')

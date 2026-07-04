@@ -140,7 +140,7 @@ export async function migratePrivateCategories(sharedRealmId: string): Promise<v
   )
   if (toMigrate.length === 0) return
 
-  await Promise.all(toMigrate.map(c => db.categories.update(c.id!, { realmId: sharedRealmId })))
+  await db.categories.bulkUpdate(toMigrate.map(c => ({ key: c.id!, changes: { realmId: sharedRealmId } })))
   triggerSync()
 }
 
@@ -185,13 +185,13 @@ export async function consolidateCategories(sharedRealmId?: string): Promise<voi
 
       const txIds = await db.transactions.where('categoryId').equals(dup.id!).primaryKeys() as string[]
       if (txIds.length > 0) {
-        await Promise.all(txIds.map(id => db.transactions.update(id, { categoryId: canonical.id })))
+        await db.transactions.bulkUpdate(txIds.map(id => ({ key: id, changes: { categoryId: canonical.id } })))
         changed = true
       }
 
       const ruleIds = await db.categoryRules.where('categoryId').equals(dup.id!).primaryKeys() as string[]
       if (ruleIds.length > 0) {
-        await Promise.all(ruleIds.map(id => db.categoryRules.update(id, { categoryId: canonical.id })))
+        await db.categoryRules.bulkUpdate(ruleIds.map(id => ({ key: id, changes: { categoryId: canonical.id } })))
         changed = true
       }
 

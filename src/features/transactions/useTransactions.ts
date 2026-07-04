@@ -68,14 +68,14 @@ export function useTransactions(filter?: TransactionFilter, hideMatched = false)
   async function setCategoryAllByPayee(tx: Transaction, categoryId: string) {
     const canonical = await resolveCanonicalCategoryId(categoryId)
     const ids = await db.transactions.where('payee').equals(tx.payee).primaryKeys() as string[]
-    await Promise.all(ids.map(id => db.transactions.update(id, { categoryId: canonical })))
+    await db.transactions.bulkUpdate(ids.map(id => ({ key: id, changes: { categoryId: canonical } })))
     await upsertRuleForTransaction({ cnpjPrefix: tx.cnpjPrefix, payee: tx.payee }, canonical)
     triggerSync()
   }
 
   async function setCategoryBulk(ids: string[], categoryId: string) {
     const canonical = await resolveCanonicalCategoryId(categoryId)
-    await Promise.all(ids.map(id => db.transactions.update(id, { categoryId: canonical })))
+    await db.transactions.bulkUpdate(ids.map(id => ({ key: id, changes: { categoryId: canonical } })))
     triggerSync()
   }
 

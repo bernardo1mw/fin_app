@@ -622,8 +622,12 @@ function parseCategorizations(text: string, validCategoryIds: Set<string>): AICa
 // Error parsing — extract human-readable message from API error bodies
 // ---------------------------------------------------------------------------
 
-function parseApiError(e: unknown): string {
+function parseApiError(e: unknown, provider?: AIProvider): string {
   if (!(e instanceof Error)) return 'Erro desconhecido'
+  if (e.message === 'Failed to fetch' || e.message.includes('NetworkError') || e.message.includes('network')) {
+    const name = provider === 'gemini' ? 'Gemini' : provider === 'anthropic' ? 'Anthropic' : provider === 'openrouter' ? 'OpenRouter' : provider === 'ollama' ? 'Ollama' : 'API'
+    return `Não foi possível conectar à ${name}. Verifique sua conexão, a chave de API e se o provedor permite requisições diretas do navegador (CORS).`
+  }
   try {
     const json = JSON.parse(e.message.replace(/^API error \d+: /, ''))
     const msg = (json?.error?.message as string) ?? (json?.message as string)
@@ -791,7 +795,7 @@ export async function requestAISuggestions(config: AIProviderConfig): Promise<vo
     if (e instanceof Error && e.name === 'AbortError') {
       analysisStore.set({ loading: false })
     } else {
-      analysisStore.set({ loading: false, error: parseApiError(e) })
+      analysisStore.set({ loading: false, error: parseApiError(e, config.provider) })
     }
   } finally {
     analysisController = null
@@ -867,7 +871,7 @@ export async function requestAICategorizations(config: AIProviderConfig, options
         }
       } catch (batchErr) {
         if (batchErr instanceof Error && batchErr.name === 'AbortError') throw batchErr
-        lastBatchError = parseApiError(batchErr)
+        lastBatchError = parseApiError(batchErr, config.provider)
       }
       // Mark all txns in this batch as seen in the DB (regardless of suggestions returned)
       await db.transactions.where('id').anyOf(batches[i].map(tx => tx.id!)).modify({ aiSeen: true })
@@ -896,7 +900,7 @@ export async function requestAICategorizations(config: AIProviderConfig, options
     if (e instanceof Error && e.name === 'AbortError') {
       catStore.set({ loading: false, batchProgress: null })
     } else {
-      catStore.set({ loading: false, batchProgress: null, error: parseApiError(e) })
+      catStore.set({ loading: false, batchProgress: null, error: parseApiError(e, config.provider) })
     }
   } finally {
     catController = null
@@ -926,4 +930,40 @@ export async function dismissAICategorization(txId: string): Promise<void> {
   const updated = catStore.snapshot().categorizations.filter(c => c.txId !== txId)
   savePendingCats(updated)
   catStore.set({ categorizations: updated })
+}
+
+export async function bulkApplyAICategorizations(items: AICategorization[]): Promise<number> {
+  const catIds = [...new Set(items.map(i => i.categoryId))]
+  const cats = await db.categories.bulkGet(catIds)
+  const validCatIds = new Set(cats.filter(Boolean).map(c => c!.id!))
+
+  const valid = items.filter(i => validCatIds.has(i.categoryId))
+  const failed = items.length - valid.length
+
+  if (valid.length > 0) {
+    await db.transactions.bulkUpdate(valid.map(i => ({ key: i.txId, changes: { categoryId: i.categoryId } })))
+    const { upsertRuleForTransaction } = await import('@/features/categories/useCategorization')
+    const txs = await db.transactions.bulkGet(valid.map(i => i.txId))
+    for (let j = 0; j < valid.length; j++) {
+      const tx = txs[j]
+      if (tx) await upsertRuleForTransaction(tx, valid[j].categoryId)
+    }
+  }
+
+  const appliedIds = new Set(valid.map(i => i.txId))
+  const remaining = catStore.snapshot().categorizations.filter(c => !appliedIds.has(c.txId))
+  savePendingCats(remaining)
+  catStore.set({ categorizations: remaining })
+  return failed
+}
+
+export async function bulkDismissAICategorizations(txIds: string[]): Promise<void> {
+  const dismissed = loadDismissed()
+  for (const id of txIds) dismissed.add(id)
+  saveDismissed(dismissed)
+  await db.transactions.bulkUpdate(txIds.map(id => ({ key: id, changes: { aiSeen: true } })))
+  const dismissedSet = new Set(txIds)
+  const remaining = catStore.snapshot().categorizations.filter(c => !dismissedSet.has(c.txId))
+  savePendingCats(remaining)
+  catStore.set({ categorizations: remaining })
 }
