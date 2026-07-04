@@ -130,11 +130,13 @@ export function useDashboardData(filter: DashboardFilter, ownerFilter?: string |
     const categories = await db.categories.toArray()
     const catMap = Object.fromEntries(categories.map(c => [c.id!, c]))
 
+    const expenseCatIds = new Set(categories.filter(c => c.type === 'expense').map(c => c.id!))
+
     const monthly: Record<string, Record<string, number>> = {}
     for (const tx of allTxs) {
       if (tx.amount >= 0 || !tx.categoryId) continue
       const catId = tx.categoryId
-      if (!catMap[catId]) continue
+      if (!expenseCatIds.has(catId)) continue
       const mKey = format(tx.date instanceof Date ? tx.date : new Date(tx.date as string), 'yyyy-MM')
       if (!monthly[mKey]) monthly[mKey] = {}
       monthly[mKey][catId] = (monthly[mKey][catId] ?? 0) + Math.abs(tx.amount)
