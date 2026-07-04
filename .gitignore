@@ -9,7 +9,8 @@ lerna-debug.log*
 
 dexie-*.key
 dexie-*.json
-Extrato-*
+*.ofx
+statements/
 plans
 node_modules
 dist

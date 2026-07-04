@@ -1,6 +1,6 @@
 import { useRef, useState, useCallback } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Upload, CheckCircle, AlertCircle, ChevronLeft, ChevronRight, Trash2, Pencil } from 'lucide-react'
+import { Upload, CheckCircle, AlertCircle, ChevronLeft, ChevronRight, Trash2, Pencil, Link2, CreditCard } from 'lucide-react'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import Box from '@mui/material/Box'
@@ -35,7 +35,7 @@ import { useRealmMembers, ownerDisplay, OwnerSelect } from '@/components/OwnerSe
 const PAGE_SIZE = 15
 
 export function ImportPage() {
-  const { parseFile, confirmImport, undoImport, loading, preview, result } = useImport()
+  const { parseFile, confirmImport, undoImport, setImportType, loading, preview, result } = useImport()
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -44,6 +44,7 @@ export function ImportPage() {
   const [confirmUndo, setConfirmUndo] = useState<string | null>(null)
   const [owner, setOwner] = useState('')
   const [editingBatchId, setEditingBatchId] = useState<string | null>(null)
+  const [linkedCheckingTxId, setLinkedCheckingTxId] = useState<string | null>(null)
 
   async function saveBatchOwner(batchId: string, newOwner: string) {
     const owner = newOwner.trim() || null
@@ -65,6 +66,7 @@ export function ImportPage() {
     if (!ofxFiles.length) return
     setTab(0)
     setPage(0)
+    setLinkedCheckingTxId(null)
     const p = await parseFile(ofxFiles[0])
     if (p && !p.parseError) {
       setSelected(new Set(p.newRows.filter(isValidRow).map(r => r.fitId)))
@@ -79,7 +81,8 @@ export function ImportPage() {
 
   async function handleConfirm() {
     if (!preview) return
-    await confirmImport(preview, selected, owner)
+    await confirmImport(preview, selected, owner, linkedCheckingTxId)
+    setLinkedCheckingTxId(null)
     setSelected(new Set())
     setPage(0)
     setTab(0)
@@ -184,6 +187,12 @@ export function ImportPage() {
           onSelectAll={selectAllNew}
           onDeselectAll={deselectAll}
           onConfirm={handleConfirm}
+          linkedCheckingTxId={linkedCheckingTxId}
+          onLinkedTxChange={setLinkedCheckingTxId}
+          onImportTypeChange={async (type) => {
+            if (type !== 'credit') setLinkedCheckingTxId(null)
+            await setImportType(type)
+          }}
         />
       )}
 
@@ -223,7 +232,19 @@ export function ImportPage() {
               <TableBody>
                 {(importBatches ?? []).map(batch => (
                   <TableRow key={batch.id} hover>
-                    <TableCell sx={{ fontSize: 13 }}>{batch.filename}</TableCell>
+                    <TableCell sx={{ fontSize: 13 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        <span>{batch.filename}</span>
+                        {batch.importType === 'credit' && (
+                          <Chip label="CC" size="small" color="secondary" sx={{ height: 16, fontSize: 10, px: 0 }} />
+                        )}
+                        {batch.linkedCheckingTxId && (
+                          <Tooltip title="Vinculado ao pagamento na conta corrente">
+                            <Link2 size={11} style={{ flexShrink: 0 }} />
+                          </Tooltip>
+                        )}
+                      </Box>
+                    </TableCell>
                     <TableCell sx={{ fontSize: 13, whiteSpace: 'nowrap', color: 'text.secondary' }}>
                       {format(batch.importedAt, "dd/MM/yyyy HH:mm", { locale: ptBR })}
                     </TableCell>
@@ -299,6 +320,9 @@ interface ReviewPanelProps {
   onSelectAll: () => void
   onDeselectAll: () => void
   onConfirm: () => void
+  linkedCheckingTxId: string | null
+  onLinkedTxChange: (id: string | null) => void
+  onImportTypeChange: (type: 'checking' | 'credit') => void
 }
 
 function ReviewPanel({
@@ -307,6 +331,7 @@ function ReviewPanel({
   owner, onOwnerChange,
   onTabChange, onPageChange, onToggleRow, onToggleAll,
   onSelectAll, onDeselectAll, onConfirm,
+  linkedCheckingTxId, onLinkedTxChange, onImportTypeChange,
 }: ReviewPanelProps) {
   const members = useRealmMembers()
   const ownerInputDisplay = owner ? (owner.includes('@') ? owner.slice(0, owner.indexOf('@')) : owner) : ''
@@ -328,6 +353,24 @@ function ReviewPanel({
           <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
             Revisar transações
           </Typography>
+          <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5 }}>
+            <Chip
+              label="Conta Corrente"
+              size="small"
+              color={preview.importType === 'checking' ? 'primary' : 'default'}
+              variant={preview.importType === 'checking' ? 'filled' : 'outlined'}
+              onClick={() => onImportTypeChange('checking')}
+              clickable
+            />
+            <Chip
+              label="Cartão de Crédito"
+              size="small"
+              color={preview.importType === 'credit' ? 'secondary' : 'default'}
+              variant={preview.importType === 'credit' ? 'filled' : 'outlined'}
+              onClick={() => onImportTypeChange('credit')}
+              clickable
+            />
+          </Box>
           {invalidCount > 0 && (
             <Typography variant="caption" color="warning.main">
               {invalidCount} linha{invalidCount !== 1 ? 's' : ''} inválida{invalidCount !== 1 ? 's' : ''} serão ignoradas (descrição ou valor em branco)
@@ -365,6 +408,15 @@ function ReviewPanel({
           </Button>
         </Box>
       </Box>
+
+      {preview.importType === 'credit' && (
+        <ReconciliationPanel
+          statementBalance={preview.statementBalance}
+          candidates={preview.paymentCandidates}
+          selectedId={linkedCheckingTxId}
+          onSelect={onLinkedTxChange}
+        />
+      )}
 
       <Tabs value={tab} onChange={(_, v: number) => onTabChange(v)} sx={{ borderBottom: 1, borderColor: 'divider' }}>
         <Tab label={`Novas (${preview.newRows.length})`} />
@@ -443,6 +495,81 @@ function ReviewPanel({
         </>
       )}
     </Box>
+  )
+}
+
+function ReconciliationPanel({ statementBalance, candidates, selectedId, onSelect }: {
+  statementBalance: number | null
+  candidates: ParsedPreview['paymentCandidates']
+  selectedId: string | null
+  onSelect: (id: string | null) => void
+}) {
+  const fmt = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })
+  const amount = statementBalance !== null ? fmt.format(Math.abs(statementBalance)) : '—'
+
+  return (
+    <Card variant="outlined">
+      <CardContent sx={{ py: 1.5, px: 2, '&:last-child': { pb: 1.5 } }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: candidates.length > 0 || selectedId ? 1 : 0 }}>
+          <CreditCard size={14} />
+          <Typography variant="caption" sx={{ fontWeight: 600 }}>
+            Fatura CC — {amount}
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            · Vincular ao pagamento na conta corrente (opcional)
+          </Typography>
+          {selectedId && (
+            <Button size="small" variant="text" sx={{ fontSize: 11, ml: 'auto', py: 0, minWidth: 0 }} onClick={() => onSelect(null)}>
+              Desvincular
+            </Button>
+          )}
+        </Box>
+
+        {candidates.length === 0 ? (
+          <Typography variant="caption" color="text.secondary">
+            Nenhum pagamento encontrado na conta corrente (valor {amount})
+          </Typography>
+        ) : (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+            {candidates.map(tx => (
+              <Box
+                key={tx.id}
+                onClick={() => onSelect(selectedId === tx.id ? null : tx.id)}
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1,
+                  cursor: 'pointer',
+                  p: 0.75,
+                  borderRadius: 1,
+                  border: '1px solid',
+                  borderColor: selectedId === tx.id ? 'primary.main' : 'divider',
+                  bgcolor: selectedId === tx.id ? 'action.selected' : 'background.paper',
+                  '&:hover': { borderColor: 'primary.light' },
+                }}
+              >
+                <Checkbox
+                  size="small"
+                  checked={selectedId === tx.id}
+                  onChange={() => onSelect(selectedId === tx.id ? null : tx.id)}
+                  onClick={e => e.stopPropagation()}
+                  sx={{ p: 0 }}
+                />
+                <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
+                  {format(tx.date, 'dd/MM/yyyy', { locale: ptBR })}
+                </Typography>
+                <Typography variant="caption" noWrap sx={{ flex: 1 }}>
+                  {tx.payee}
+                </Typography>
+                <Typography variant="caption" sx={{ fontFamily: 'monospace', whiteSpace: 'nowrap', color: tx.amount > 0 ? 'success.main' : 'text.primary' }}>
+                  {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: tx.currency || 'BRL' }).format(tx.amount)}
+                </Typography>
+              </Box>
+            ))}
+          </Box>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 

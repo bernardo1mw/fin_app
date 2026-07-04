@@ -107,17 +107,17 @@ export function useMatches() {
   }
 
   async function bulkApprove(ids: string[]) {
-    await Promise.all(ids.map(id => db.transactionMatches.update(id, { status: 'approved' })))
+    await db.transactionMatches.bulkUpdate(ids.map(id => ({ key: id, changes: { status: 'approved' as const } })))
     triggerSync()
   }
 
   async function bulkReject(ids: string[]) {
-    await Promise.all(ids.map(id => db.transactionMatches.update(id, { status: 'rejected' })))
+    await db.transactionMatches.bulkUpdate(ids.map(id => ({ key: id, changes: { status: 'rejected' as const } })))
     triggerSync()
   }
 
   async function bulkUndo(ids: string[]) {
-    await Promise.all(ids.map(id => db.transactionMatches.update(id, { status: 'pending' })))
+    await db.transactionMatches.bulkUpdate(ids.map(id => ({ key: id, changes: { status: 'pending' as const } })))
     triggerSync()
   }
 
@@ -131,6 +131,8 @@ export async function getApprovedMatchedTxIds(): Promise<Set<string>> {
   const approved = await db.transactionMatches.where('status').equals('approved').toArray()
   const ids = new Set<string>()
   for (const m of approved) { ids.add(m.txId1); ids.add(m.txId2) }
+  const ccBatches = await db.importBatches.filter(b => !!b.linkedCheckingTxId).toArray()
+  for (const b of ccBatches) { if (b.linkedCheckingTxId) ids.add(b.linkedCheckingTxId) }
   return ids
 }
 

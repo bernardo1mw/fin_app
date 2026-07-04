@@ -14,6 +14,10 @@ export interface ParsedPreview {
   newRows: PreviewRow[]
   duplicateRows: PreviewRow[]
   parseError?: string
+  importType: 'checking' | 'credit'
+  statementBalance: number | null
+  statementBalanceAsOf: Date | null
+  paymentCandidates: Array<Transaction & { id: string }>
 }
 
 export interface ImportResult {
@@ -77,12 +81,49 @@ export function useImport() {
         }
       }
 
-      const p: ParsedPreview = { filename: file.name, accountId, realmId, newRows, duplicateRows }
+      let paymentCandidates: Array<Transaction & { id: string }> = []
+      if (parsed.importType === 'credit' && parsed.account.ledgerBalance !== null && parsed.account.ledgerBalanceAsOf) {
+        const asOf = parsed.account.ledgerBalanceAsOf
+        const windowStart = new Date(asOf.getTime() - 14 * 24 * 60 * 60 * 1000)
+        const windowEnd = new Date(asOf.getTime() + 45 * 24 * 60 * 60 * 1000)
+        const checkingAccts = await db.accounts.filter(a => a.acctType !== 'CREDIT').toArray()
+        const checkingIds = checkingAccts.map(a => a.id!).filter(Boolean)
+        if (checkingIds.length > 0) {
+          const balance = parsed.account.ledgerBalance
+          paymentCandidates = (await db.transactions
+            .where('accountId').anyOf(checkingIds)
+            .filter(tx => tx.date >= windowStart && tx.date <= windowEnd && Math.abs((tx.amount ?? 0) - balance) < 0.02)
+            .toArray()) as Array<Transaction & { id: string }>
+        }
+      }
+
+      const p: ParsedPreview = {
+        filename: file.name,
+        accountId,
+        realmId,
+        newRows,
+        duplicateRows,
+        importType: parsed.importType,
+        statementBalance: parsed.account.ledgerBalance,
+        statementBalanceAsOf: parsed.account.ledgerBalanceAsOf,
+        paymentCandidates,
+      }
       setPreview(p)
       return p
     } catch (e) {
       const parseError = e instanceof Error ? e.message : String(e)
-      const p: ParsedPreview = { filename: '', accountId: '', realmId: undefined, newRows: [], duplicateRows: [], parseError }
+      const p: ParsedPreview = {
+        filename: '',
+        accountId: '',
+        realmId: undefined,
+        newRows: [],
+        duplicateRows: [],
+        parseError,
+        importType: 'checking',
+        statementBalance: null,
+        statementBalanceAsOf: null,
+        paymentCandidates: [],
+      }
       setPreview(p)
       return p
     } finally {
@@ -90,7 +131,7 @@ export function useImport() {
     }
   }
 
-  async function confirmImport(p: ParsedPreview, selectedFitIds: Set<string>, owner?: string | null): Promise<ImportResult> {
+  async function confirmImport(p: ParsedPreview, selectedFitIds: Set<string>, owner?: string | null, linkedCheckingTxId?: string | null): Promise<ImportResult> {
     setLoading(true)
     const importBatchId = crypto.randomUUID()
     const res: ImportResult = { imported: 0, skipped: 0, categorized: 0, importBatchId, errors: [] }
@@ -124,6 +165,8 @@ export function useImport() {
           importedAt: new Date(),
           transactionCount: valid.length,
           owner: owner?.trim() || null,
+          importType: p.importType,
+          linkedCheckingTxId: linkedCheckingTxId ?? null,
         })
       } catch {
         // importBatches unavailable (e.g. schema migration pending) — import still succeeded
@@ -141,6 +184,24 @@ export function useImport() {
     return res
   }
 
+  async function setImportType(type: 'checking' | 'credit'): Promise<void> {
+    if (!preview || preview.importType === type) return
+    setPreview({ ...preview, importType: type, paymentCandidates: [] })
+    if (type !== 'credit' || preview.statementBalance === null || !preview.statementBalanceAsOf) return
+    const asOf = preview.statementBalanceAsOf
+    const windowStart = new Date(asOf.getTime() - 14 * 24 * 60 * 60 * 1000)
+    const windowEnd = new Date(asOf.getTime() + 45 * 24 * 60 * 60 * 1000)
+    const checkingAccts = await db.accounts.filter(a => a.acctType !== 'CREDIT').toArray()
+    const checkingIds = checkingAccts.map(a => a.id!).filter(Boolean)
+    if (!checkingIds.length) return
+    const balance = preview.statementBalance
+    const candidates = (await db.transactions
+      .where('accountId').anyOf(checkingIds)
+      .filter(tx => tx.date >= windowStart && tx.date <= windowEnd && Math.abs((tx.amount ?? 0) - balance) < 0.02)
+      .toArray()) as Array<Transaction & { id: string }>
+    setPreview(p => p && p.importType === 'credit' ? { ...p, paymentCandidates: candidates } : p)
+  }
+
   async function undoImport(importBatchId: string): Promise<void> {
     const ids = await db.transactions
       .where('importId').equals(importBatchId)
@@ -150,5 +211,5 @@ export function useImport() {
     triggerSync()
   }
 
-  return { parseFile, confirmImport, undoImport, loading, preview, result }
+  return { parseFile, confirmImport, undoImport, setImportType, loading, preview, result }
 }

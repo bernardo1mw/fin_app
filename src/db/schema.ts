@@ -27,6 +27,8 @@ export interface ImportBatch {
   importedAt: Date
   transactionCount: number
   owner?: string | null
+  importType?: 'checking' | 'credit'
+  linkedCheckingTxId?: string | null
 }
 
 export interface Category {
