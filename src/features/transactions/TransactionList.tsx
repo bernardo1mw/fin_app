@@ -467,6 +467,9 @@ export function TransactionList() {
                     </TableCell>
                     <TableCell sx={{ color: 'text.secondary', whiteSpace: 'nowrap', fontSize: 13 }}>
                       {format(tx.date, 'dd/MM/yyyy', { locale: ptBR })}
+                      <Typography component="span" variant="caption" sx={{ color: 'text.disabled', ml: 0.5 }}>
+                        - {format(tx.date, 'EEE', { locale: ptBR })}
+                      </Typography>
                     </TableCell>
                     <TableCell sx={{ minWidth: 160 }}>
                       <Typography variant="body2" sx={{ fontWeight: 500 }}>{tx.payee}</Typography>

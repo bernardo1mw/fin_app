@@ -32,6 +32,7 @@ import {
   type AISuggestion,
   type AICategorization,
   type AIHealthSummary,
+  type AIBudgetForecast,
 } from './ClaudeAdvisor'
 
 export function SuggestionsPanel() {
@@ -40,7 +41,7 @@ export function SuggestionsPanel() {
   const [bulkError, setBulkError] = useState<string | null>(null)
   const [isForceRun, setIsForceRun] = useState(false)
 
-  const { health, suggestions: aiSuggestions, loading: loadingAI, error: aiError, cacheTimestamp } = useSyncExternalStore(
+  const { health, suggestions: aiSuggestions, forecast, loading: loadingAI, error: aiError, cacheTimestamp } = useSyncExternalStore(
     subscribeAIStore,
     getAIStoreSnapshot,
   )
@@ -142,6 +143,12 @@ export function SuggestionsPanel() {
         {aiError && <Alert severity="error">{aiError}</Alert>}
         {health && <HealthScoreCard health={health} />}
         {aiSuggestions.map((s, i) => <AIInsightCard key={i} suggestion={s} />)}
+        {forecast && forecast.items.length > 0 && (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            <Typography variant="overline" color="text.secondary">Previsão para o próximo mês</Typography>
+            <ForecastCard forecast={forecast} />
+          </Box>
+        )}
       </Box>
 
       <Divider />
@@ -273,6 +280,11 @@ function HealthScoreCard({ health }: { health: AIHealthSummary }) {
               <ShieldAlert size={13} color="#ed6c02" style={{ marginTop: 2, flexShrink: 0 }} />
               <Typography variant="caption" color="text.secondary">{health.concern}</Typography>
             </Box>
+            {health.narrative && (
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1, fontStyle: 'italic' }}>
+                {health.narrative}
+              </Typography>
+            )}
           </Box>
         </Box>
       </CardContent>
@@ -392,6 +404,34 @@ function CategorizationCard({ item }: { item: AICategorization }) {
             </Button>
           </Box>
         </Box>
+      </CardContent>
+    </Card>
+  )
+}
+
+function ForecastCard({ forecast }: { forecast: AIBudgetForecast }) {
+  return (
+    <Card>
+      <CardContent sx={{ pb: '16px !important' }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', mb: 1 }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>{forecast.period}</Typography>
+          <Typography variant="caption" color="text.secondary">
+            Total estimado: {fmt.format(forecast.totalPredicted)}
+          </Typography>
+        </Box>
+        {forecast.items.slice(0, 7).map(item => (
+          <Box key={item.category} sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 0.25 }}>
+            {item.direction === 'up'
+              ? <TrendingUp size={13} color="#ed6c02" />
+              : item.direction === 'down'
+                ? <TrendingDown size={13} color="#2e7d32" />
+                : <Minus size={13} color="#757575" />}
+            <Typography variant="body2" sx={{ flexGrow: 1 }}>{item.category}</Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
+              {fmt.format(item.lastMonth)} → {fmt.format(item.predicted)}
+            </Typography>
+          </Box>
+        ))}
       </CardContent>
     </Card>
   )

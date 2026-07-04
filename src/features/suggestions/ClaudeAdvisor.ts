@@ -1,5 +1,5 @@
 import { db } from '@/db/db'
-import { startOfMonth, subMonths, endOfMonth, format } from 'date-fns'
+import { startOfMonth, subMonths, endOfMonth, format, addMonths } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import type { Transaction, Category } from '@/db/schema'
 import { getApprovedMatchedTxIds } from '@/features/matches/useMatches'
@@ -14,6 +14,20 @@ export interface AIHealthSummary {
   headline: string
   strength: string
   concern: string
+  narrative?: string
+}
+
+export interface AIBudgetForecastItem {
+  category: string
+  lastMonth: number
+  predicted: number
+  direction: 'up' | 'down' | 'stable'
+}
+
+export interface AIBudgetForecast {
+  period: string
+  totalPredicted: number
+  items: AIBudgetForecastItem[]
 }
 
 export interface AISuggestion {
@@ -75,6 +89,7 @@ export function isAIConfigured(config: AIProviderConfig): boolean {
 type AIAnalysisStore = {
   health: AIHealthSummary | null
   suggestions: AISuggestion[]
+  forecast: AIBudgetForecast | null
   loading: boolean
   error: string | null
   cacheTimestamp: number | null
@@ -111,6 +126,7 @@ const PENDING_CAT_KEY = 'ai_pending_categorizations'
 interface AnalysisCache {
   health: AIHealthSummary
   suggestions: AISuggestion[]
+  forecast?: AIBudgetForecast | null
   timestamp: number
 }
 
@@ -121,9 +137,9 @@ function loadAnalysisCache(): AnalysisCache | null {
   } catch { return null }
 }
 
-function saveAnalysisCache(health: AIHealthSummary | null, suggestions: AISuggestion[]) {
+function saveAnalysisCache(health: AIHealthSummary | null, suggestions: AISuggestion[], forecast: AIBudgetForecast | null) {
   if (!health) return
-  localStorage.setItem(ANALYSIS_CACHE_KEY, JSON.stringify({ health, suggestions, timestamp: Date.now() } satisfies AnalysisCache))
+  localStorage.setItem(ANALYSIS_CACHE_KEY, JSON.stringify({ health, suggestions, forecast, timestamp: Date.now() } satisfies AnalysisCache))
 }
 
 function loadDismissed(): Set<string> {
@@ -161,6 +177,7 @@ const _cached = loadAnalysisCache()
 const analysisStore = makeStore<AIAnalysisStore>({
   health: _cached?.health ?? null,
   suggestions: _cached?.suggestions ?? [],
+  forecast: _cached?.forecast ?? null,
   loading: false,
   error: null,
   cacheTimestamp: _cached?.timestamp ?? null,
@@ -207,7 +224,7 @@ type MonthData = {
   payeeAmounts: Record<string, number>
 }
 
-type CategoryTrend = {
+export type CategoryTrend = {
   lastMonth: number
   prevMonth: number
   momChangePct: number
@@ -406,6 +423,43 @@ function computeRecurringPayees(months: MonthData[]) {
 }
 
 // ---------------------------------------------------------------------------
+// Budget forecast — deterministic projection from category trends
+// ---------------------------------------------------------------------------
+
+export function computeBudgetForecast(categoryTrends: Record<string, CategoryTrend>): AIBudgetForecast {
+  const period = format(addMonths(new Date(), 1), 'MMM/yyyy', { locale: ptBR })
+  const items: AIBudgetForecastItem[] = []
+
+  for (const [category, trend] of Object.entries(categoryTrends)) {
+    if (trend.lastMonth === 0) continue
+
+    let predicted: number
+    let direction: AIBudgetForecastItem['direction']
+
+    if (trend.trend === 'accelerating') {
+      const growthRate = Math.min(trend.momChangePct / 100, 0.5)
+      predicted = Math.round(trend.lastMonth * (1 + growthRate))
+      direction = 'up'
+    } else if (trend.trend === 'declining') {
+      const declineRate = Math.max(trend.momChangePct / 100, -0.5)
+      predicted = Math.max(0, Math.round(trend.lastMonth * (1 + declineRate)))
+      direction = 'down'
+    } else {
+      predicted = trend.prevMonth > 0
+        ? Math.round((trend.lastMonth + trend.prevMonth) / 2)
+        : trend.lastMonth
+      direction = 'stable'
+    }
+
+    items.push({ category, lastMonth: trend.lastMonth, predicted, direction })
+  }
+
+  items.sort((a, b) => b.predicted - a.predicted)
+  const totalPredicted = items.reduce((s, i) => s + i.predicted, 0)
+  return { period, totalPredicted, items }
+}
+
+// ---------------------------------------------------------------------------
 // Health score — deterministic, computed in TypeScript
 // ---------------------------------------------------------------------------
 
@@ -468,8 +522,9 @@ INSTRUÇÕES:
 1. "headline": uma frase resumindo a saúde financeira atual.
 2. "strength": o que está indo bem, citando um número específico dos dados.
 3. "concern": a maior preocupação, citando um número específico dos dados.
-4. "suggestions": entre 3 e 5 sugestões ordenadas por impacto (high primeiro). Cada "insight" DEVE citar números reais dos dados (ex: "Transporte cresceu 23% de R$450 para R$553"). Se savingsAnalysis.reliable=false, não inclua sugestões sobre taxa de poupança. Considere o perfil de risco ao dar dicas de investimento.
-5. O campo "trend" de cada sugestão deve refletir o campo "trend" do categoryTrends para aquela categoria (ou "stable" para insights gerais).
+4. "narrative": um parágrafo de 2-3 frases descrevendo a situação financeira de forma clara e direta, como um consultor falaria ao cliente, citando números reais dos dados em português.
+5. "suggestions": entre 3 e 5 sugestões ordenadas por impacto (high primeiro). Cada "insight" DEVE citar números reais dos dados (ex: "Transporte cresceu 23% de R$450 para R$553"). Se savingsAnalysis.reliable=false, não inclua sugestões sobre taxa de poupança. Considere o perfil de risco ao dar dicas de investimento.
+6. O campo "trend" de cada sugestão deve refletir o campo "trend" do categoryTrends para aquela categoria (ou "stable" para insights gerais).
 
 Responda SOMENTE com JSON válido, sem markdown:
 {
@@ -478,7 +533,8 @@ Responda SOMENTE com JSON válido, sem markdown:
     "grade": "${health.grade}",
     "headline": "<uma frase>",
     "strength": "<o que está bem, com número>",
-    "concern": "<maior problema, com número>"
+    "concern": "<maior problema, com número>",
+    "narrative": "<parágrafo de 2-3 frases com números reais>"
   },
   "suggestions": [
     {
@@ -494,7 +550,7 @@ Responda SOMENTE com JSON válido, sem markdown:
 }
 
 function buildCategorizationPrompt(
-  txs: Pick<Transaction, 'id' | 'payee' | 'memo' | 'amount' | 'transactionSubtype'>[],
+  txs: Pick<Transaction, 'id' | 'payee' | 'memo' | 'amount' | 'transactionSubtype' | 'date'>[],
   categories: Category[],
 ): string {
   const catList = categories
@@ -504,9 +560,10 @@ function buildCategorizationPrompt(
   const txList = txs.map(tx => ({
     txId: tx.id,
     payee: tx.payee,
-    memo: tx.memo.slice(0, 60),
+    memo: tx.memo.slice(0, 100),
     amount: Math.round(Math.abs(tx.amount)),
     type: tx.transactionSubtype,
+    date: format(tx.date, 'yyyy-MM-dd'),
   }))
 
   return `Classifique cada transação na categoria mais adequada.
@@ -521,8 +578,9 @@ REGRAS:
 - Use SOMENTE os IDs da lista de categorias acima
 - Cada item da resposta deve usar o txId EXATO da transação correspondente — nunca reutilize ou troque txIds entre transações
 - "reason" deve derivar diretamente do nome do payee da MESMA transação (máx 8 palavras em português)
-- "confidence" = "high" SOMENTE quando o nome do payee, por si só, identifica inequivocamente a categoria. Exemplos: "Assai Atacadista" → Alimentação (high), "Netflix" → Entretenimento (high), "Uber" → Transporte (high), "PIX João Silva" → low, "FATURA CARTAO" → low, "TED 00001234" → low
-- Use "low" para: transferências pessoais (nomes próprios), faturas de cartão, transferências bancárias, siglas/códigos sem contexto, ou qualquer caso em que você não tenha certeza. Itens "low" são descartados — prefira não sugerir a sugerir errado.
+- "confidence" = "high" SOMENTE quando o nome do payee/memo, por si só, identifica inequivocamente a categoria. Exemplos high: "Assai Atacadista" → Alimentação, "Netflix" → Entretenimento, "Uber" → Transporte, "Shell" → Combustível, "Farmácia" → Saúde, "Drogasil" → Saúde, "iFood" → Alimentação
+- Use "low" para: PIX com nome próprio (ex: "PIX João Silva", "PIX Recebido"), FATURA/PAGAMENTO DE CARTÃO, TED/DOC genérico, siglas bancárias (ex: "TED 00001234", "TRANSF PIX"), qualquer caso ambíguo. O campo "date" pode ajudar a inferir padrões recorrentes (ex: aluguel no início do mês, mensalidade no mesmo dia todo mês).
+- Itens "low" são descartados — prefira não sugerir a sugerir errado.
 
 Responda SOMENTE com JSON válido, sem markdown:
 {"categorizations": [{"txId": "...", "categoryId": "...", "categoryName": "...", "reason": "...", "confidence": "high|low"}]}`
@@ -570,6 +628,9 @@ function parseAnalysis(
       headline: rawHealth.headline,
       strength: rawHealth.strength,
       concern: rawHealth.concern,
+      ...(typeof rawHealth.narrative === 'string' && rawHealth.narrative.length > 0
+        ? { narrative: rawHealth.narrative }
+        : {}),
     }
   }
 
@@ -789,8 +850,9 @@ export async function requestAISuggestions(config: AIProviderConfig): Promise<vo
     if (!health && suggestions.length === 0) {
       throw new Error('O modelo não retornou análise válida. Tente um modelo maior ou use Anthropic/OpenRouter.')
     }
-    saveAnalysisCache(health, suggestions)
-    analysisStore.set({ health, suggestions, loading: false, cacheTimestamp: Date.now() })
+    const forecast = computeBudgetForecast(summary.categoryTrends)
+    saveAnalysisCache(health, suggestions, forecast)
+    analysisStore.set({ health, suggestions, forecast, loading: false, cacheTimestamp: Date.now() })
   } catch (e) {
     if (e instanceof Error && e.name === 'AbortError') {
       analysisStore.set({ loading: false })
