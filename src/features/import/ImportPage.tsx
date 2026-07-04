@@ -1,6 +1,6 @@
 import { useRef, useState, useCallback } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Upload, CheckCircle, AlertCircle, ChevronLeft, ChevronRight, Trash2, Pencil, Link2, CreditCard } from 'lucide-react'
+import { Upload, CheckCircle, AlertCircle, Trash2, Pencil, Link2, CreditCard } from 'lucide-react'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import Box from '@mui/material/Box'
@@ -20,6 +20,7 @@ import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
 import Paper from '@mui/material/Paper'
 import CircularProgress from '@mui/material/CircularProgress'
+import TablePagination from '@mui/material/TablePagination'
 import TextField from '@mui/material/TextField'
 import Autocomplete from '@mui/material/Autocomplete'
 import Tooltip from '@mui/material/Tooltip'
@@ -32,8 +33,6 @@ import { db, triggerSync } from '@/db/db'
 import { useImport, isValidRow, type PreviewRow, type ParsedPreview } from './useImport'
 import { useRealmMembers, ownerDisplay, OwnerSelect } from '@/components/OwnerSelect'
 
-const PAGE_SIZE = 15
-
 export function ImportPage() {
   const { parseFile, confirmImport, undoImport, setImportType, loading, preview, result } = useImport()
   const inputRef = useRef<HTMLInputElement>(null)
@@ -41,6 +40,7 @@ export function ImportPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [tab, setTab] = useState(0)
   const [page, setPage] = useState(0)
+  const [rowsPerPage, setRowsPerPage] = useState(25)
   const [confirmUndo, setConfirmUndo] = useState<string | null>(null)
   const [owner, setOwner] = useState('')
   const [editingBatchId, setEditingBatchId] = useState<string | null>(null)
@@ -95,8 +95,7 @@ export function ImportPage() {
   }
 
   const rows = preview ? (tab === 0 ? preview.newRows : preview.duplicateRows) : []
-  const totalPages = Math.ceil(rows.length / PAGE_SIZE)
-  const pageRows = rows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+  const pageRows = rows.slice(page * rowsPerPage, (page + 1) * rowsPerPage)
 
   const allPageSelected = pageRows.length > 0 && pageRows.filter(isValidRow).every(r => selected.has(r.fitId))
   const somePageSelected = pageRows.some(r => selected.has(r.fitId))
@@ -174,14 +173,16 @@ export function ImportPage() {
           page={page}
           rows={rows}
           pageRows={pageRows}
-          totalPages={totalPages}
           allPageSelected={allPageSelected}
           somePageSelected={somePageSelected}
           catMap={catMap}
           owner={owner}
           onOwnerChange={setOwner}
           onTabChange={(v) => { setTab(v); setPage(0) }}
+          page={page}
+          rowsPerPage={rowsPerPage}
           onPageChange={setPage}
+          onRowsPerPageChange={(rpp) => { setRowsPerPage(rpp); setPage(0) }}
           onToggleRow={toggleRow}
           onToggleAll={toggleAll}
           onSelectAll={selectAllNew}
@@ -307,14 +308,15 @@ interface ReviewPanelProps {
   page: number
   rows: PreviewRow[]
   pageRows: PreviewRow[]
-  totalPages: number
+  rowsPerPage: number
   allPageSelected: boolean
   somePageSelected: boolean
   catMap: Record<string, string>
   owner: string
   onOwnerChange: (v: string) => void
   onTabChange: (v: number) => void
-  onPageChange: (fn: (p: number) => number) => void
+  onPageChange: (newPage: number) => void
+  onRowsPerPageChange: (rpp: number) => void
   onToggleRow: (fitId: string) => void
   onToggleAll: () => void
   onSelectAll: () => void
@@ -326,10 +328,10 @@ interface ReviewPanelProps {
 }
 
 function ReviewPanel({
-  preview, selected, tab, page, rows, pageRows, totalPages,
+  preview, selected, tab, page, rows, pageRows, rowsPerPage,
   allPageSelected, somePageSelected, catMap,
   owner, onOwnerChange,
-  onTabChange, onPageChange, onToggleRow, onToggleAll,
+  onTabChange, onPageChange, onRowsPerPageChange, onToggleRow, onToggleAll,
   onSelectAll, onDeselectAll, onConfirm,
   linkedCheckingTxId, onLinkedTxChange, onImportTypeChange,
 }: ReviewPanelProps) {
@@ -477,21 +479,17 @@ function ReviewPanel({
             </Table>
           </TableContainer>
 
-          {totalPages > 1 && (
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Typography variant="body2" color="text.secondary">
-                {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, rows.length)} de {rows.length}
-              </Typography>
-              <Box sx={{ display: 'flex', gap: 0.5 }}>
-                <Button size="small" variant="outlined" disabled={page === 0} onClick={() => onPageChange(p => p - 1)} sx={{ minWidth: 36, p: 0.5 }}>
-                  <ChevronLeft size={16} />
-                </Button>
-                <Button size="small" variant="outlined" disabled={page >= totalPages - 1} onClick={() => onPageChange(p => p + 1)} sx={{ minWidth: 36, p: 0.5 }}>
-                  <ChevronRight size={16} />
-                </Button>
-              </Box>
-            </Box>
-          )}
+          <TablePagination
+            component="div"
+            count={rows.length}
+            page={page}
+            onPageChange={(_, newPage) => onPageChange(newPage)}
+            rowsPerPage={rowsPerPage}
+            onRowsPerPageChange={e => onRowsPerPageChange(Number(e.target.value))}
+            rowsPerPageOptions={[10, 25, 50, 100]}
+            labelRowsPerPage="Por página:"
+            labelDisplayedRows={({ from, to, count }) => `${from}–${to} de ${count}`}
+          />
         </>
       )}
     </Box>
