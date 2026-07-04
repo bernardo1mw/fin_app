@@ -306,10 +306,11 @@ const impactColor: Record<string, string> = {
 }
 
 function AIInsightCard({ suggestion: s }: { suggestion: AISuggestion }) {
+  const fmtBRL = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
   return (
     <Card>
       <CardContent sx={{ pb: '16px !important' }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1, flexWrap: 'wrap' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.75, flexWrap: 'wrap' }}>
           <Lightbulb size={15} color="#eab308" />
           <Typography variant="subtitle2" sx={{ flexGrow: 1 }}>{s.category}</Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
@@ -323,6 +324,20 @@ function AIInsightCard({ suggestion: s }: { suggestion: AISuggestion }) {
             />
           )}
         </Box>
+        {(s.historicalContext || s.targetAmount !== undefined) && (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.75, flexWrap: 'wrap' }}>
+            {s.historicalContext && (
+              <Chip label={s.historicalContext} size="small" variant="outlined" sx={{ height: 20, fontSize: 11 }} />
+            )}
+            {s.targetAmount !== undefined && (
+              <Chip
+                label={`Meta: ${fmtBRL(s.targetAmount)}/mês`}
+                size="small"
+                sx={{ height: 20, fontSize: 11, bgcolor: '#22c55e22', color: '#15803d' }}
+              />
+            )}
+          </Box>
+        )}
         <Typography variant="body2" color="text.secondary" sx={{ mb: 0.75 }}>{s.insight}</Typography>
         <Typography variant="body2" color="text.secondary">
           <strong>Recomendação:</strong> {s.recommendation}

@@ -40,6 +40,8 @@ export interface AISuggestion {
   category: string
   trend: 'up' | 'down' | 'stable' | 'new'
   impact: 'high' | 'medium' | 'low'
+  historicalContext?: string  // e.g. "R$553/mês vs média R$420 (+32%)"
+  targetAmount?: number       // concrete monthly BRL target for this category
   insight: string
   recommendation: string
   savingsTip: string
@@ -589,7 +591,13 @@ INSTRUÇÕES:
 2. "strength": o que está indo bem, citando um número específico dos dados.
 3. "concern": a maior preocupação, citando um número específico dos dados.
 4. "narrative": um parágrafo de 2-3 frases descrevendo a situação financeira de forma clara e direta, como um consultor falaria ao cliente, citando números reais dos dados em português.
-5. "suggestions": analise CADA categoria presente em categoryTrends (todas, sem exceção). Para cada categoria, compare o lastMonth com fullPeriodStats.categoryAvgMonthly para fornecer contexto histórico real (ex: "Transporte: R$553 no último mês vs média histórica de R$420"). Após as categorias, adicione 2-3 insights gerais (poupança global, padrões de comportamento) com category="Geral". Ordene tudo por impacto (high primeiro). Cada "insight" DEVE citar números reais dos dados. Se savingsAnalysis.reliable=false, não inclua sugestões sobre taxa de poupança. Considere o perfil de risco ao dar dicas de investimento.
+5. "suggestions": analise CADA categoria presente em categoryTrends (todas, sem exceção). Para CADA categoria de despesa:
+   - "historicalContext": compare lastMonth com fullPeriodStats.categoryAvgMonthly, formato compacto: "R$553/mês vs média R$420 (+32%)" — se não houver média histórica, use "Primeira ocorrência"
+   - "targetAmount": uma meta mensal concreta em BRL que o usuário deveria atingir (número inteiro, ex: 420) — baseada na média histórica ou em um corte razoável; omita para categoria="Geral"
+   - "insight": observação específica com números reais (montantes, percentuais, comparação com histórico)
+   - "recommendation": 2-3 ações concretas e específicas, NÃO genéricas (ex: "Cancele X", "Substitua Y por Z", "Limite a N vezes por semana"), baseadas nos payees reais se disponíveis
+   - "savingsTip": potencial de economia em R$ se atingir a meta (ex: "Economize ~R$133/mês cortando de R$553 para a meta de R$420")
+   Após todas as categorias, adicione 2-3 insights gerais (poupança global, padrões recorrentes) com category="Geral" e sem targetAmount. Ordene tudo por impacto (high primeiro). Se savingsAnalysis.reliable=false, não inclua sugestões sobre taxa de poupança. Considere o perfil de risco ao dar dicas de investimento.
 6. O campo "trend" de cada sugestão deve refletir o campo "trend" do categoryTrends para aquela categoria (ou "stable" para insights gerais).
 
 Responda SOMENTE com JSON válido, sem markdown:
@@ -607,9 +615,11 @@ Responda SOMENTE com JSON válido, sem markdown:
       "category": "<nome da categoria ou 'Geral'>",
       "trend": "<up|down|stable|new>",
       "impact": "<high|medium|low>",
-      "insight": "<observação com número específico>",
-      "recommendation": "<ação concreta>",
-      "savingsTip": "<dica de economia>"
+      "historicalContext": "<R$X/mês vs média R$Y (+Z%)>",
+      "targetAmount": <número inteiro BRL ou omitir para Geral>,
+      "insight": "<observação com números reais>",
+      "recommendation": "<2-3 ações concretas específicas>",
+      "savingsTip": "<economia potencial em R$ se atingir meta>"
     }
   ]
 }`

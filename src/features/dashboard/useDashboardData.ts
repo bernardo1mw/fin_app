@@ -1,8 +1,13 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/db/db'
-import { startOfMonth, endOfMonth, subMonths, format } from 'date-fns'
+import { startOfMonth, endOfMonth, subMonths, format, startOfDay, endOfDay } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { getApprovedMatchedTxIds } from '@/features/matches/useMatches'
+
+export type DashboardFilter =
+  | { type: 'month'; date: Date }
+  | { type: 'range'; from: Date; to: Date }
+  | { type: 'all' }
 
 function matchesOwner(owner: string | null | undefined, filter: string | '__none__' | undefined): boolean {
   if (!filter) return true
@@ -10,14 +15,26 @@ function matchesOwner(owner: string | null | undefined, filter: string | '__none
   return owner === filter
 }
 
-// selectedMonth = null means "all time"
-export function useDashboardData(selectedMonth: Date | null, ownerFilter?: string | '__none__') {
-  const dep = selectedMonth?.getTime() ?? null
+function filterBounds(f: DashboardFilter): { from: Date; to: Date } | null {
+  if (f.type === 'all') return null
+  if (f.type === 'month') return { from: startOfMonth(f.date), to: endOfMonth(f.date) }
+  return { from: startOfDay(f.from), to: endOfDay(f.to) }
+}
+
+function filterDep(f: DashboardFilter): string {
+  if (f.type === 'all') return 'all'
+  if (f.type === 'month') return `m:${f.date.getTime()}`
+  return `r:${f.from.getTime()}-${f.to.getTime()}`
+}
+
+export function useDashboardData(filter: DashboardFilter, ownerFilter?: string | '__none__') {
+  const dep = filterDep(filter)
 
   const spendingByCategory = useLiveQuery(async () => {
     const excluded = await getApprovedMatchedTxIds()
-    const allTxs = selectedMonth
-      ? await db.transactions.where('date').between(startOfMonth(selectedMonth), endOfMonth(selectedMonth)).toArray()
+    const bounds = filterBounds(filter)
+    const allTxs = bounds
+      ? await db.transactions.where('date').between(bounds.from, bounds.to).toArray()
       : await db.transactions.toArray()
     const txs = allTxs.filter(t => !excluded.has(t.id!) && matchesOwner(t.owner, ownerFilter))
     const categories = await db.categories.toArray()
@@ -45,8 +62,16 @@ export function useDashboardData(selectedMonth: Date | null, ownerFilter?: strin
     const excluded = await getApprovedMatchedTxIds()
     let months: Date[]
 
-    if (selectedMonth) {
-      months = Array.from({ length: 12 }, (_, i) => subMonths(selectedMonth, 11 - i))
+    if (filter.type === 'month') {
+      months = Array.from({ length: 12 }, (_, i) => subMonths(filter.date, 11 - i))
+    } else if (filter.type === 'range') {
+      const keys = new Set<string>()
+      const cur = new Date(startOfMonth(filter.from))
+      while (cur <= filter.to) {
+        keys.add(format(cur, 'yyyy-MM'))
+        cur.setMonth(cur.getMonth() + 1)
+      }
+      months = Array.from(keys).sort().map(k => new Date(k + '-01'))
     } else {
       const allTxs = await db.transactions.orderBy('date').toArray()
       if (!allTxs.length) return []
@@ -87,8 +112,9 @@ export function useDashboardData(selectedMonth: Date | null, ownerFilter?: strin
 
   const summary = useLiveQuery(async () => {
     const excluded = await getApprovedMatchedTxIds()
-    const allTxs = selectedMonth
-      ? await db.transactions.where('date').between(startOfMonth(selectedMonth), endOfMonth(selectedMonth)).toArray()
+    const bounds = filterBounds(filter)
+    const allTxs = bounds
+      ? await db.transactions.where('date').between(bounds.from, bounds.to).toArray()
       : await db.transactions.toArray()
     const txs = allTxs.filter(t => !excluded.has(t.id!) && matchesOwner(t.owner, ownerFilter))
     const income = txs.filter(t => t.amount > 0).reduce((s, t) => s + t.amount, 0)
@@ -97,5 +123,43 @@ export function useDashboardData(selectedMonth: Date | null, ownerFilter?: strin
     return { income, expenses, balance: income - expenses, uncategorized }
   }, [dep, ownerFilter])
 
-  return { spendingByCategory, monthlyCashFlow, netWorthPoints, summary }
+  // All-time per-category monthly average — always unfiltered so the baseline is historically stable
+  const categoryMonthlyAvg = useLiveQuery(async () => {
+    const excluded = await getApprovedMatchedTxIds()
+    const allTxs = (await db.transactions.toArray()).filter(t => !excluded.has(t.id!) && matchesOwner(t.owner, ownerFilter))
+    const categories = await db.categories.toArray()
+    const catMap = Object.fromEntries(categories.map(c => [c.id!, c]))
+
+    const monthly: Record<string, Record<string, number>> = {}
+    for (const tx of allTxs) {
+      if (tx.amount >= 0 || !tx.categoryId) continue
+      const catId = tx.categoryId
+      if (!catMap[catId]) continue
+      const mKey = format(tx.date instanceof Date ? tx.date : new Date(tx.date as string), 'yyyy-MM')
+      if (!monthly[mKey]) monthly[mKey] = {}
+      monthly[mKey][catId] = (monthly[mKey][catId] ?? 0) + Math.abs(tx.amount)
+    }
+
+    const catTotals: Record<string, { sum: number; count: number; name: string; color: string }> = {}
+    for (const byCat of Object.values(monthly)) {
+      for (const [catId, amt] of Object.entries(byCat)) {
+        if (!catTotals[catId]) {
+          const cat = catMap[catId]
+          catTotals[catId] = { sum: 0, count: 0, name: cat.name, color: cat.color }
+        }
+        catTotals[catId].sum += amt
+        catTotals[catId].count++
+      }
+    }
+
+    return Object.entries(catTotals)
+      .map(([, { name, color, sum, count }]) => ({
+        name,
+        color,
+        avgMonthly: Math.round(sum / count),
+      }))
+      .sort((a, b) => b.avgMonthly - a.avgMonthly)
+  }, [ownerFilter])
+
+  return { spendingByCategory, monthlyCashFlow, netWorthPoints, summary, categoryMonthlyAvg }
 }
