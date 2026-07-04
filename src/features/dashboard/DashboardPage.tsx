@@ -261,7 +261,7 @@ function DashboardFilters({ filter, onFilterChange, ownerFilter, onOwnerChange, 
               const from = fromInputDate(e.target.value)
               if (from <= filter.to) onFilterChange({ type: 'range', from, to: filter.to })
             }}
-            InputLabelProps={{ shrink: true }}
+            slotProps={{ inputLabel: { shrink: true } }}
             sx={{ width: 145 }}
           />
           <TextField
@@ -274,7 +274,7 @@ function DashboardFilters({ filter, onFilterChange, ownerFilter, onOwnerChange, 
               const to = fromInputDate(e.target.value)
               if (filter.from <= to) onFilterChange({ type: 'range', from: filter.from, to })
             }}
-            InputLabelProps={{ shrink: true }}
+            slotProps={{ inputLabel: { shrink: true } }}
             sx={{ width: 145 }}
           />
         </>
