@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { computeBudgetForecast } from '@/features/suggestions/ClaudeAdvisor'
+import { computeBudgetForecast, computeFullPeriodStats } from '@/features/suggestions/ClaudeAdvisor'
 import type { CategoryTrend } from '@/features/suggestions/ClaudeAdvisor'
+import type { Transaction } from '@/db/schema'
 
 function makeTrend(overrides: Partial<CategoryTrend>): CategoryTrend {
   return {
@@ -82,5 +83,60 @@ describe('computeBudgetForecast', () => {
       B: makeTrend({ lastMonth: 200, prevMonth: 200 }),
     })
     expect(forecast.totalPredicted).toBe(500)
+  })
+})
+
+function makeTx(overrides: Partial<Transaction> & { date: Date; amount: number }): Transaction {
+  return {
+    id: 'tx1',
+    payee: 'Payee',
+    memo: '',
+    amount: overrides.amount,
+    date: overrides.date,
+    categoryId: undefined,
+    transactionSubtype: 'other',
+    aiSeen: false,
+    ...overrides,
+  } as unknown as Transaction
+}
+
+describe('computeFullPeriodStats', () => {
+  it('returns zeros for empty input', () => {
+    const stats = computeFullPeriodStats([], {})
+    expect(stats.totalMonths).toBe(0)
+    expect(stats.categoryAvgMonthly).toEqual({})
+    expect(stats.overallAvgSavingsRate).toBe(0)
+  })
+
+  it('counts distinct months correctly', () => {
+    const txs = [
+      makeTx({ id: 't1', date: new Date('2025-01-15'), amount: -100, categoryId: '1' }),
+      makeTx({ id: 't2', date: new Date('2025-02-10'), amount: -200, categoryId: '1' }),
+      makeTx({ id: 't3', date: new Date('2025-02-20'), amount: -50, categoryId: '1' }),
+    ]
+    const stats = computeFullPeriodStats(txs, { '1': 'Alimentação' })
+    expect(stats.totalMonths).toBe(2)
+  })
+
+  it('computes per-category monthly average across months where category appeared', () => {
+    const txs = [
+      makeTx({ id: 't1', date: new Date('2025-01-15'), amount: -300, categoryId: '1' }),
+      makeTx({ id: 't2', date: new Date('2025-02-10'), amount: -500, categoryId: '1' }),
+    ]
+    // avg = (300 + 500) / 2 = 400
+    const stats = computeFullPeriodStats(txs, { '1': 'Alimentação' })
+    expect(stats.categoryAvgMonthly['Alimentação']).toBe(400)
+  })
+
+  it('computes overall average savings rate from months with income', () => {
+    const txs = [
+      makeTx({ id: 'i1', date: new Date('2025-01-05'), amount: 2000 }),  // income
+      makeTx({ id: 'e1', date: new Date('2025-01-15'), amount: -1000 }), // expense, no category
+      makeTx({ id: 'i2', date: new Date('2025-02-05'), amount: 2000 }),
+      makeTx({ id: 'e2', date: new Date('2025-02-15'), amount: -500 }),
+    ]
+    // Jan: (2000-1000)/2000 = 50%; Feb: (2000-500)/2000 = 75%; avg = 63
+    const stats = computeFullPeriodStats(txs, {})
+    expect(stats.overallAvgSavingsRate).toBe(63)
   })
 })

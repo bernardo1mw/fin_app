@@ -30,6 +30,12 @@ export interface AIBudgetForecast {
   items: AIBudgetForecastItem[]
 }
 
+export interface FullPeriodStats {
+  totalMonths: number
+  categoryAvgMonthly: Record<string, number>
+  overallAvgSavingsRate: number
+}
+
 export interface AISuggestion {
   category: string
   trend: 'up' | 'down' | 'stable' | 'new'
@@ -240,12 +246,14 @@ type SavingsAnalysis =
 async function buildFinancialSummary() {
   const now = new Date()
   const months = Array.from({ length: 6 }, (_, i) => subMonths(now, 6 - i))
-  const [categories, profile, excluded] = await Promise.all([
+  const [categories, profile, excluded, allTxsRaw] = await Promise.all([
     db.categories.toArray(),
     db.userProfile.get(1),
     getApprovedMatchedTxIds(),
+    db.transactions.toArray(),
   ])
   const catMap = Object.fromEntries(categories.map(c => [c.id!, c.name]))
+  const allTxs = allTxsRaw.filter(t => !excluded.has(t.id!))
 
   let lastMonthTxs: Transaction[] = []
 
@@ -297,6 +305,7 @@ async function buildFinancialSummary() {
   const savingsAnalysis = computeSavingsAnalysis(monthlyData, profile?.savingsGoalPct ?? 20)
   const topExpenses = computeTopExpenses(lastMonthTxs, catMap)
   const recurringPayees = computeRecurringPayees(monthlyData)
+  const fullPeriodStats = computeFullPeriodStats(allTxs, catMap)
 
   const totalExpensesAllMonths = monthlyData.reduce((s, m) => s + m.totalExpenses, 0)
   const totalUncategorizedAmt = monthlyData.reduce((s, m) => s + m.uncategorized.totalAmount, 0)
@@ -312,6 +321,7 @@ async function buildFinancialSummary() {
     uncategorizedRatioPct,
     topExpenses,
     recurringPayees,
+    fullPeriodStats,
     profile: profile
       ? { savingsGoalPct: profile.savingsGoalPct, riskProfile: profile.riskProfile, monthlyIncome: profile.monthlyIncome }
       : null,
@@ -324,7 +334,7 @@ function computeCategoryTrends(months: MonthData[]): Record<string, CategoryTren
   // Use months[2..3] as baseline — excludes prevMonth to avoid overlap in the comparison
   const baseline = [months[2], months[3]].map(m => m.expensesByCategory)
 
-  const allCats = new Set([...Object.keys(last), ...Object.keys(prev)])
+  const allCats = new Set(months.flatMap(m => Object.keys(m.expensesByCategory)))
   const result: Record<string, CategoryTrend> = {}
 
   for (const cat of allCats) {
@@ -420,6 +430,62 @@ function computeRecurringPayees(months: MonthData[]) {
     }))
     .sort((a, b) => b.avgAmount - a.avgAmount)
     .slice(0, 10)
+}
+
+// ---------------------------------------------------------------------------
+// Full-period stats — all-time per-category averages across all history
+// ---------------------------------------------------------------------------
+
+export function computeFullPeriodStats(
+  txs: Transaction[],
+  catMap: Record<string, string>,
+): FullPeriodStats {
+  if (txs.length === 0) return { totalMonths: 0, categoryAvgMonthly: {}, overallAvgSavingsRate: 0 }
+
+  const monthlyCat: Record<string, Record<string, number>> = {}
+  const monthlyIncome: Record<string, number> = {}
+  const monthlyExpenses: Record<string, number> = {}
+
+  for (const tx of txs) {
+    const key = format(tx.date, 'yyyy-MM')
+    if (!monthlyCat[key]) { monthlyCat[key] = {}; monthlyIncome[key] = 0; monthlyExpenses[key] = 0 }
+    if (tx.amount >= 0) {
+      monthlyIncome[key] += tx.amount
+    } else {
+      const abs = Math.abs(tx.amount)
+      monthlyExpenses[key] += abs
+      if (tx.categoryId) {
+        const cat = catMap[tx.categoryId] ?? 'Outros'
+        monthlyCat[key][cat] = (monthlyCat[key][cat] ?? 0) + abs
+      }
+    }
+  }
+
+  const totalMonths = Object.keys(monthlyCat).length
+
+  const catTotals: Record<string, { sum: number; count: number }> = {}
+  for (const cats of Object.values(monthlyCat)) {
+    for (const [cat, amt] of Object.entries(cats)) {
+      if (!catTotals[cat]) catTotals[cat] = { sum: 0, count: 0 }
+      catTotals[cat].sum += amt
+      catTotals[cat].count++
+    }
+  }
+  const categoryAvgMonthly = Object.fromEntries(
+    Object.entries(catTotals).map(([cat, { sum, count }]) => [cat, Math.round(sum / count)])
+  )
+
+  let rateSum = 0
+  let monthsWithIncome = 0
+  for (const [key, income] of Object.entries(monthlyIncome)) {
+    if (income > 0) {
+      rateSum += ((income - (monthlyExpenses[key] ?? 0)) / income) * 100
+      monthsWithIncome++
+    }
+  }
+  const overallAvgSavingsRate = monthsWithIncome > 0 ? Math.round(rateSum / monthsWithIncome) : 0
+
+  return { totalMonths, categoryAvgMonthly, overallAvgSavingsRate }
 }
 
 // ---------------------------------------------------------------------------
@@ -523,7 +589,7 @@ INSTRUÇÕES:
 2. "strength": o que está indo bem, citando um número específico dos dados.
 3. "concern": a maior preocupação, citando um número específico dos dados.
 4. "narrative": um parágrafo de 2-3 frases descrevendo a situação financeira de forma clara e direta, como um consultor falaria ao cliente, citando números reais dos dados em português.
-5. "suggestions": entre 3 e 5 sugestões ordenadas por impacto (high primeiro). Cada "insight" DEVE citar números reais dos dados (ex: "Transporte cresceu 23% de R$450 para R$553"). Se savingsAnalysis.reliable=false, não inclua sugestões sobre taxa de poupança. Considere o perfil de risco ao dar dicas de investimento.
+5. "suggestions": analise CADA categoria presente em categoryTrends (todas, sem exceção). Para cada categoria, compare o lastMonth com fullPeriodStats.categoryAvgMonthly para fornecer contexto histórico real (ex: "Transporte: R$553 no último mês vs média histórica de R$420"). Após as categorias, adicione 2-3 insights gerais (poupança global, padrões de comportamento) com category="Geral". Ordene tudo por impacto (high primeiro). Cada "insight" DEVE citar números reais dos dados. Se savingsAnalysis.reliable=false, não inclua sugestões sobre taxa de poupança. Considere o perfil de risco ao dar dicas de investimento.
 6. O campo "trend" de cada sugestão deve refletir o campo "trend" do categoryTrends para aquela categoria (ou "stable" para insights gerais).
 
 Responda SOMENTE com JSON válido, sem markdown:
@@ -841,6 +907,7 @@ export async function requestAISuggestions(config: AIProviderConfig): Promise<vo
       ),
       recurringPayees: summary.recurringPayees.slice(0, 3),
       topExpenses: undefined,
+      fullPeriodStats: undefined,
     } : summary
 
     // Ollama context is 4096 total; cap output to leave headroom for the prompt
