@@ -1,6 +1,6 @@
 import Dexie, { type EntityTable } from 'dexie'
 import dexieCloud from 'dexie-cloud-addon'
-import type { Transaction, Category, CategoryRule, Account, UserProfile, ImportBatch, TransactionMatch } from './schema'
+import type { Transaction, Category, CategoryRule, Account, UserProfile, ImportBatch, TransactionMatch, AppSetting } from './schema'
 
 const CLOUD_URL = import.meta.env.VITE_DEXIE_CLOUD_URL as string | undefined
 
@@ -12,6 +12,7 @@ class FinanceDB extends Dexie {
   userProfile!: EntityTable<UserProfile, 'id'>
   importBatches!: EntityTable<ImportBatch, 'id'>
   transactionMatches!: EntityTable<TransactionMatch, 'id'>
+  appSettings!: EntityTable<AppSetting, 'key'>
 
   constructor() {
     super('FinanceDB2', { addons: CLOUD_URL ? [dexieCloud] : [] })
@@ -47,6 +48,16 @@ class FinanceDB extends Dexie {
       userProfile: 'id',
       importBatches: 'id, importedAt, realmId',
       transactionMatches: 'id, txId1, txId2, status, realmId',
+    })
+    this.version(6).stores({
+      transactions: 'id, [accountId+fitId], date, amount, payee, categoryId, accountId, cnpjPrefix, transactionSubtype, realmId, importId',
+      categories: 'id, name, type, realmId',
+      categoryRules: 'id, cnpjPrefix, namePattern, categoryId, priority, realmId',
+      accounts: 'id, bankId, acctId, realmId',
+      userProfile: 'id',
+      importBatches: 'id, importedAt, realmId',
+      transactionMatches: 'id, txId1, txId2, status, realmId',
+      appSettings: 'key, realmId',
     })
     if (CLOUD_URL) {
       this.cloud.configure({

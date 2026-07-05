@@ -1,4 +1,7 @@
-import { db } from '@/db/db'
+import { liveQuery } from 'dexie'
+import { useLiveQuery } from 'dexie-react-hooks'
+import { db, triggerSync } from '@/db/db'
+import { requireRealmId } from '@/db/sharedRealm'
 import { startOfMonth, subMonths, endOfMonth, format, addMonths } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import type { Transaction, Category } from '@/db/schema'
@@ -70,16 +73,52 @@ export interface AIProviderConfig {
   geminiModel?: string
 }
 
-export const AI_CONFIG_KEY = 'ai_provider_config'
+const AI_CONFIG_SETTING_KEY = 'ai_provider_config'
 
-export function loadAIConfig(): AIProviderConfig {
+export async function loadAIConfig(): Promise<AIProviderConfig> {
   try {
-    const raw = localStorage.getItem(AI_CONFIG_KEY)
-    if (raw) return JSON.parse(raw) as AIProviderConfig
+    const row = await db.appSettings.get(AI_CONFIG_SETTING_KEY)
+    if (row) return JSON.parse(row.value) as AIProviderConfig
   } catch {}
-  const legacyKey = localStorage.getItem('anthropic_api_key')
-  if (legacyKey) return { provider: 'anthropic', anthropicKey: legacyKey }
+  // Migrate from localStorage on first Dexie load
+  try {
+    const raw = localStorage.getItem('ai_provider_config')
+    if (raw) {
+      const config = JSON.parse(raw) as AIProviderConfig
+      await saveAIConfig(config)
+      localStorage.removeItem('ai_provider_config')
+      return config
+    }
+    const legacyKey = localStorage.getItem('anthropic_api_key')
+    if (legacyKey) {
+      const config: AIProviderConfig = { provider: 'anthropic', anthropicKey: legacyKey }
+      await saveAIConfig(config)
+      return config
+    }
+  } catch {}
   return { provider: 'anthropic' }
+}
+
+export async function saveAIConfig(config: AIProviderConfig): Promise<void> {
+  const realmId = await requireRealmId()
+  const record = realmId
+    ? { key: AI_CONFIG_SETTING_KEY, value: JSON.stringify(config), updatedAt: Date.now(), realmId }
+    : { key: AI_CONFIG_SETTING_KEY, value: JSON.stringify(config), updatedAt: Date.now() }
+  await db.appSettings.put(record)
+  triggerSync()
+}
+
+export function useAIConfig(): AIProviderConfig | undefined {
+  return useLiveQuery(async () => {
+    const row = await db.appSettings.get(AI_CONFIG_SETTING_KEY)
+    if (row) return JSON.parse(row.value) as AIProviderConfig
+    // Fallback to localStorage while migration hasn't happened yet
+    try {
+      const raw = localStorage.getItem('ai_provider_config')
+      if (raw) return JSON.parse(raw) as AIProviderConfig
+    } catch {}
+    return undefined
+  })
 }
 
 export function isAIConfigured(config: AIProviderConfig): boolean {
@@ -138,16 +177,16 @@ interface AnalysisCache {
   timestamp: number
 }
 
-function loadAnalysisCache(): AnalysisCache | null {
-  try {
-    const raw = localStorage.getItem(ANALYSIS_CACHE_KEY)
-    return raw ? (JSON.parse(raw) as AnalysisCache) : null
-  } catch { return null }
-}
-
-function saveAnalysisCache(health: AIHealthSummary | null, suggestions: AISuggestion[], forecast: AIBudgetForecast | null) {
-  if (!health) return
-  localStorage.setItem(ANALYSIS_CACHE_KEY, JSON.stringify({ health, suggestions, forecast, timestamp: Date.now() } satisfies AnalysisCache))
+async function saveAnalysisCache(health: AIHealthSummary | null, suggestions: AISuggestion[], forecast: AIBudgetForecast | null): Promise<number> {
+  const timestamp = Date.now()
+  if (!health) return timestamp
+  const realmId = await requireRealmId()
+  const record = realmId
+    ? { key: ANALYSIS_CACHE_KEY, value: JSON.stringify({ health, suggestions, forecast, timestamp }), updatedAt: timestamp, realmId }
+    : { key: ANALYSIS_CACHE_KEY, value: JSON.stringify({ health, suggestions, forecast, timestamp }), updatedAt: timestamp }
+  await db.appSettings.put(record)
+  triggerSync()
+  return timestamp
 }
 
 function loadDismissed(): Set<string> {
@@ -177,19 +216,39 @@ function savePendingCats(items: AICategorization[]) {
 }
 
 // ---------------------------------------------------------------------------
-// Store initialization (seeded from cache)
+// Store initialization — seeded async from Dexie, reactive to cloud sync
 // ---------------------------------------------------------------------------
 
-const _cached = loadAnalysisCache()
-
 const analysisStore = makeStore<AIAnalysisStore>({
-  health: _cached?.health ?? null,
-  suggestions: _cached?.suggestions ?? [],
-  forecast: _cached?.forecast ?? null,
+  health: null,
+  suggestions: [],
+  forecast: null,
   loading: false,
   error: null,
-  cacheTimestamp: _cached?.timestamp ?? null,
+  cacheTimestamp: null,
 })
+
+// Subscribe to Dexie changes: seeds initial state and picks up cloud-synced updates
+liveQuery(() => db.appSettings.get(ANALYSIS_CACHE_KEY)).subscribe({
+  next: (row) => {
+    if (!row) return
+    try {
+      const cached = JSON.parse(row.value) as AnalysisCache
+      const current = analysisStore.snapshot()
+      if (!current.loading && (current.cacheTimestamp === null || cached.timestamp > current.cacheTimestamp)) {
+        analysisStore.set({
+          health: cached.health,
+          suggestions: cached.suggestions ?? [],
+          forecast: cached.forecast ?? null,
+          cacheTimestamp: cached.timestamp,
+          loading: false,
+          error: null,
+        })
+      }
+    } catch {}
+  },
+})
+
 const _pendingCats = loadPendingCats()
 const catStore = makeStore<AICatStore>({ categorizations: _pendingCats, loading: false, error: null, totalUncategorized: 0, batchProgress: null })
 
@@ -928,8 +987,8 @@ export async function requestAISuggestions(config: AIProviderConfig): Promise<vo
       throw new Error('O modelo não retornou análise válida. Tente um modelo maior ou use Anthropic/OpenRouter.')
     }
     const forecast = computeBudgetForecast(summary.categoryTrends)
-    saveAnalysisCache(health, suggestions, forecast)
-    analysisStore.set({ health, suggestions, forecast, loading: false, cacheTimestamp: Date.now() })
+    const cacheTimestamp = await saveAnalysisCache(health, suggestions, forecast)
+    analysisStore.set({ health, suggestions, forecast, loading: false, cacheTimestamp })
   } catch (e) {
     if (e instanceof Error && e.name === 'AbortError') {
       analysisStore.set({ loading: false })

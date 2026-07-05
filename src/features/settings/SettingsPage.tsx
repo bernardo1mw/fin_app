@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { Download, Eye, EyeOff, Save, Cloud, CloudOff, LogIn, LogOut, UserPlus, RefreshCw, Trash2 } from 'lucide-react'
 import type { SelectChangeEvent } from '@mui/material/Select'
 import { db, cloudEnabled, triggerSync } from '@/db/db'
-import { loadAIConfig, AI_CONFIG_KEY, type AIProvider, type AIProviderConfig } from '@/features/suggestions/ClaudeAdvisor'
+import { saveAIConfig, type AIProvider, type AIProviderConfig } from '@/features/suggestions/ClaudeAdvisor'
 import { setSharedRealmId, resolveActiveRealmId } from '@/db/sharedRealm'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
@@ -81,7 +81,17 @@ function SyncStatusChip() {
 
 export function SettingsPage() {
   const profile = useLiveQuery(() => db.userProfile.get(1))
-  const [aiConfig, setAiConfig] = useState<AIProviderConfig>(() => loadAIConfig())
+  const savedAiConfig = useLiveQuery(async () => {
+    const row = await db.appSettings.get('ai_provider_config')
+    if (row) return JSON.parse(row.value) as AIProviderConfig
+    try {
+      const raw = localStorage.getItem('ai_provider_config')
+      if (raw) return JSON.parse(raw) as AIProviderConfig
+    } catch {}
+    return undefined
+  })
+  const [draftAiConfig, setDraftAiConfig] = useState<AIProviderConfig | null>(null)
+  const aiConfig: AIProviderConfig = draftAiConfig ?? savedAiConfig ?? { provider: 'anthropic' as AIProvider }
   const [showKey, setShowKey] = useState(false)
   type ProfileDraft = { income: string; savingsPct: string; riskProfile: UserProfile['riskProfile'] }
   const [draft, setDraft] = useState<Partial<ProfileDraft>>({})
@@ -116,13 +126,14 @@ export function SettingsPage() {
     setTimeout(() => setSavedMsg(''), 2500)
   }
 
-  function saveAIConfig() {
-    localStorage.setItem(AI_CONFIG_KEY, JSON.stringify(aiConfig))
+  async function handleSaveAIConfig() {
+    await saveAIConfig(aiConfig)
+    setDraftAiConfig(null)
     flash('Configuração de IA salva!')
   }
 
   function updateAIConfig(patch: Partial<AIProviderConfig>) {
-    setAiConfig(c => ({ ...c, ...patch }))
+    setDraftAiConfig(c => ({ ...(c ?? savedAiConfig ?? { provider: 'anthropic' as AIProvider }), ...patch }))
   }
 
   async function saveProfile() {
@@ -545,7 +556,7 @@ export function SettingsPage() {
             </>
           )}
 
-          <Button variant="contained" startIcon={<Save size={14} />} onClick={saveAIConfig} sx={{ alignSelf: 'flex-start' }}>
+          <Button variant="contained" startIcon={<Save size={14} />} onClick={handleSaveAIConfig} sx={{ alignSelf: 'flex-start' }}>
             Salvar configuração
           </Button>
         </CardContent>

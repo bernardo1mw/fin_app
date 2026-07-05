@@ -78,3 +78,10 @@ export interface UserProfile {
   savingsGoalPct: number
   riskProfile: 'conservador' | 'moderado' | 'arrojado'
 }
+
+export interface AppSetting {
+  key: string
+  realmId?: string
+  value: string   // JSON-serialized value
+  updatedAt: number
+}

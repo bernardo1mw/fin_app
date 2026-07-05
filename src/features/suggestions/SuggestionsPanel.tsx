@@ -15,7 +15,7 @@ import Divider from '@mui/material/Divider'
 import CircularProgress from '@mui/material/CircularProgress'
 import { generateSuggestions, type Suggestion } from './SuggestionsEngine'
 import {
-  loadAIConfig,
+  useAIConfig,
   isAIConfigured,
   requestAISuggestions,
   requestAICategorizations,
@@ -50,8 +50,8 @@ export function SuggestionsPanel() {
     getCatStoreSnapshot,
   )
 
-  const aiConfig = loadAIConfig()
-  const configured = isAIConfigured(aiConfig)
+  const aiConfig = useAIConfig()
+  const configured = !!aiConfig && isAIConfigured(aiConfig)
 
   // Count uncategorized transactions the AI has never seen — reactive via Dexie
   const neverSeenByAI = useLiveQuery(
@@ -128,7 +128,7 @@ export function SuggestionsPanel() {
               <Button
                 size="small"
                 variant="outlined"
-                onClick={() => requestAISuggestions(aiConfig)}
+                onClick={() => { if (aiConfig) requestAISuggestions(aiConfig) }}
                 disabled={loadingAI}
                 startIcon={loadingAI ? <CircularProgress size={12} /> : <Sparkles size={12} />}
               >
@@ -176,7 +176,7 @@ export function SuggestionsPanel() {
                 size="small"
                 variant="outlined"
                 disabled={loadingCat || neverSeenByAI === 0}
-                onClick={() => { setIsForceRun(false); requestAICategorizations(aiConfig) }}
+                onClick={() => { setIsForceRun(false); if (aiConfig) requestAICategorizations(aiConfig) }}
                 startIcon={(loadingCat && !isForceRun) ? <CircularProgress size={12} /> : <Tag size={12} />}
               >
                 {loadingCat && !isForceRun
@@ -188,7 +188,7 @@ export function SuggestionsPanel() {
                 variant="outlined"
                 color="inherit"
                 disabled={loadingCat || totalUncategorized === 0}
-                onClick={() => { setIsForceRun(true); requestAICategorizations(aiConfig, { forceAll: true }) }}
+                onClick={() => { setIsForceRun(true); if (aiConfig) requestAICategorizations(aiConfig, { forceAll: true }) }}
                 startIcon={(loadingCat && isForceRun) ? <CircularProgress size={12} /> : <Tag size={12} />}
               >
                 {loadingCat && isForceRun
