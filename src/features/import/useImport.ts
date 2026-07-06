@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { db, triggerSync } from '@/db/db'
 import { requireRealmId, resolveCanonicalCategoryId } from '@/db/sharedRealm'
 import { parseOFXBuffer } from './OFXParser'
+import { parseInterCCPDF } from './InterCCPDFParser'
 import { applyRules } from '@/features/categories/useCategorization'
 import type { Transaction } from '@/db/schema'
 
@@ -46,7 +47,9 @@ export function useImport() {
     setResult(null)
     try {
       const buffer = await file.arrayBuffer()
-      const parsed = parseOFXBuffer(buffer)
+      const parsed = file.name.toLowerCase().endsWith('.pdf')
+        ? await parseInterCCPDF(buffer)
+        : parseOFXBuffer(buffer)
       const realmId = await requireRealmId()
 
       let account = await db.accounts.filter(

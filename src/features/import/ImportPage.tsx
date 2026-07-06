@@ -60,9 +60,10 @@ export function ImportPage() {
 
   const handleFiles = useCallback(async (files: FileList | null) => {
     if (!files?.length) return
-    const ofxFiles = Array.from(files).filter(f =>
-      f.name.toLowerCase().endsWith('.ofx') || f.name.toLowerCase().endsWith('.qfx')
-    )
+    const ofxFiles = Array.from(files).filter(f => {
+      const name = f.name.toLowerCase()
+      return name.endsWith('.ofx') || name.endsWith('.qfx') || name.endsWith('.pdf')
+    })
     if (!ofxFiles.length) return
     setTab(0)
     setPage(0)
@@ -130,7 +131,7 @@ export function ImportPage() {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, maxWidth: 800, mx: 'auto' }}>
-      <Typography variant="h5" sx={{ fontWeight: 700 }}>Importar OFX</Typography>
+      <Typography variant="h5" sx={{ fontWeight: 700 }}>Importar extrato</Typography>
 
       <Card sx={{ maxWidth: 640 }}>
         <CardContent>
@@ -151,9 +152,9 @@ export function ImportPage() {
             }}
           >
             <Upload size={40} color="#9e9e9e" style={{ margin: '0 auto 12px' }} />
-            <Typography variant="body1" sx={{ fontWeight: 500 }}>Arraste o arquivo OFX ou clique para selecionar</Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>Suporta arquivos .ofx e .qfx</Typography>
-            <input ref={inputRef} type="file" accept=".ofx,.qfx" hidden onChange={e => handleFiles(e.target.files)} />
+            <Typography variant="body1" sx={{ fontWeight: 500 }}>Arraste o arquivo ou clique para selecionar</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>Suporta .ofx, .qfx e .pdf (fatura Inter)</Typography>
+            <input ref={inputRef} type="file" accept=".ofx,.qfx,.pdf" hidden onChange={e => handleFiles(e.target.files)} />
           </Box>
         </CardContent>
       </Card>
