@@ -31,11 +31,12 @@ import TablePagination from '@mui/material/TablePagination'
 import Alert from '@mui/material/Alert'
 import Tabs from '@mui/material/Tabs'
 import Tab from '@mui/material/Tab'
-import { Filter, Plus, Trash2, X, GitMerge } from 'lucide-react'
+import { Filter, Plus, Trash2, X, GitMerge, Pencil } from 'lucide-react'
 import { CategoryPicker } from './CategoryPicker'
 import { useTransactions } from './useTransactions'
 import type { TransactionFilter } from './useTransactions'
 import { AddTransactionDialog } from './AddTransactionDialog'
+import { EditTransactionDialog } from './EditTransactionDialog'
 import { MatchesPage } from '@/features/matches/MatchesPage'
 import { createManualMatch } from '@/features/matches/useMatches'
 import { OwnerSelect, ownerDisplay, useDistinctOwners } from '@/components/OwnerSelect'
@@ -63,13 +64,14 @@ export function TransactionList() {
   const [matchError, setMatchError] = useState<string | null>(null)
   const [matchLoading, setMatchLoading] = useState(false)
   const [editingOwnerId, setEditingOwnerId] = useState<string | null>(null)
+  const [editTx, setEditTx] = useState<Transaction | null>(null)
 
   function updateFilters(updater: (f: TransactionFilter) => TransactionFilter) {
     setFilters(updater)
     setPage(0)
   }
 
-  const { transactions, categories, accounts, setCategory, setCategoryAllByPayee, setCategoryBulk, countSamePayee, deleteTransaction, deleteTransactionsBulk, setOwner } =
+  const { transactions, categories, accounts, setCategory, setCategoryAllByPayee, setCategoryBulk, countSamePayee, deleteTransaction, deleteTransactionsBulk, setOwner, updateTransaction } =
     useTransactions(filters, true)
   const distinctOwners = useDistinctOwners()
 
@@ -517,7 +519,16 @@ export function TransactionList() {
                         </Typography>
                       )}
                     </TableCell>
-                    <TableCell padding="none" onClick={e => e.stopPropagation()} sx={{ width: 40 }}>
+                    <TableCell padding="none" onClick={e => e.stopPropagation()} sx={{ width: 72, whiteSpace: 'nowrap' }}>
+                      <Tooltip title="Editar">
+                        <IconButton
+                          size="small"
+                          onClick={() => setEditTx(tx)}
+                          sx={{ color: 'text.disabled', '&:hover': { color: 'primary.main' } }}
+                        >
+                          <Pencil size={14} />
+                        </IconButton>
+                      </Tooltip>
                       <Tooltip title="Excluir">
                         <IconButton
                           size="small"
@@ -599,6 +610,13 @@ export function TransactionList() {
       </Dialog>
 
       <AddTransactionDialog open={showAdd} onClose={() => setShowAdd(false)} />
+      <EditTransactionDialog
+        open={editTx !== null}
+        transaction={editTx}
+        categories={categories ?? []}
+        onClose={() => setEditTx(null)}
+        onSave={updateTransaction}
+      />
     </Box>
   )
 }
