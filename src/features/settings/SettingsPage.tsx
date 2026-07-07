@@ -1,6 +1,6 @@
 import { useState, useSyncExternalStore } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Download, Eye, EyeOff, Save, Cloud, CloudOff, LogIn, LogOut, UserPlus, RefreshCw, Trash2 } from 'lucide-react'
+import { Download, Upload, Eye, EyeOff, Save, Cloud, CloudOff, LogIn, LogOut, UserPlus, RefreshCw, Trash2 } from 'lucide-react'
 import type { SelectChangeEvent } from '@mui/material/Select'
 import { db, cloudEnabled, triggerSync } from '@/db/db'
 import { saveAIConfig, type AIProvider, type AIProviderConfig } from '@/features/suggestions/ClaudeAdvisor'
@@ -103,6 +103,8 @@ export function SettingsPage() {
   const setRiskProfile = (v: UserProfile['riskProfile']) => setDraft(d => ({ ...d, riskProfile: v }))
 
   const [savedMsg, setSavedMsg] = useState('')
+  const [importMsg, setImportMsg] = useState('')
+  const [importError, setImportError] = useState('')
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviting, setInviting] = useState(false)
   const [inviteMsg, setInviteMsg] = useState('')
@@ -176,6 +178,39 @@ export function SettingsPage() {
     a.download = `financas-backup-${new Date().toISOString().slice(0, 10)}.json`
     a.click()
     URL.revokeObjectURL(url)
+  }
+
+  async function importData(file: File) {
+    let parsed: unknown
+    try { parsed = JSON.parse(await file.text()) } catch {
+      flash('Arquivo inválido — não é um JSON válido.')
+      return
+    }
+    if (!parsed || typeof parsed !== 'object' || !('exportedAt' in parsed)) {
+      flash('Arquivo inválido — formato não reconhecido.')
+      return
+    }
+    const data = parsed as { transactions?: unknown[]; categories?: unknown[]; categoryRules?: unknown[]; accounts?: unknown[]; userProfile?: unknown[] }
+    const txCount = data.transactions?.length ?? 0
+    const catCount = data.categories?.length ?? 0
+    if (!confirm(`Importar ${txCount} transações e ${catCount} categorias?\nRegistros existentes com o mesmo ID serão substituídos.`)) return
+    const transactions = (data.transactions ?? []).map((t: unknown) => {
+      const tx = t as Record<string, unknown>
+      return { ...tx, date: new Date(tx.date as string) }
+    })
+    const accounts = (data.accounts ?? []).map((a: unknown) => {
+      const acc = a as Record<string, unknown>
+      return { ...acc, ledgerBalanceAsOf: acc.ledgerBalanceAsOf ? new Date(acc.ledgerBalanceAsOf as string) : null }
+    })
+    await db.transaction('rw', [db.transactions, db.categories, db.categoryRules, db.accounts, db.userProfile], async () => {
+      if (transactions.length) await db.transactions.bulkPut(transactions as Transaction[])
+      if (data.categories?.length) await db.categories.bulkPut(data.categories as Category[])
+      if (data.categoryRules?.length) await db.categoryRules.bulkPut(data.categoryRules as CategoryRule[])
+      if (accounts.length) await db.accounts.bulkPut(accounts as Account[])
+      if (data.userProfile?.length) await db.userProfile.bulkPut(data.userProfile as UserProfile[])
+    })
+    triggerSync()
+    flash(`Importação concluída: ${txCount} transações, ${catCount} categorias.`)
   }
 
   async function handleLogin() {
@@ -613,6 +648,15 @@ export function SettingsPage() {
           <Button variant="outlined" startIcon={<Download size={14} />} onClick={exportData} sx={{ alignSelf: 'flex-start' }}>
             Exportar dados (JSON)
           </Button>
+          <>
+            <input type="file" accept=".json" style={{ display: 'none' }} id="import-json-input"
+              onChange={e => { const f = e.target.files?.[0]; if (f) { importData(f); e.target.value = '' } }} />
+            <Button variant="outlined" startIcon={<Upload size={14} />}
+              onClick={() => document.getElementById('import-json-input')?.click()}
+              sx={{ alignSelf: 'flex-start' }}>
+              Importar dados (JSON)
+            </Button>
+          </>
           <Divider />
           <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'error.main' }}>Apagar dados</Typography>
           <Typography variant="body2" color="text.secondary">
