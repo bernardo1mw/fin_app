@@ -103,8 +103,7 @@ export function SettingsPage() {
   const setRiskProfile = (v: UserProfile['riskProfile']) => setDraft(d => ({ ...d, riskProfile: v }))
 
   const [savedMsg, setSavedMsg] = useState('')
-  const [importMsg, setImportMsg] = useState('')
-  const [importError, setImportError] = useState('')
+
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviting, setInviting] = useState(false)
   const [inviteMsg, setInviteMsg] = useState('')
